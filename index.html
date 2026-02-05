@@ -1,76 +1,82 @@
-<!doctype html>
-<html lang="uk">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Three Readymag Scene</title>
+  <meta charset="UTF-8" />
+  <title>Three.js Text</title>
   <style>
-    html,body { height:100%; margin:0; }
-    #three-container { width:100%; height:100%; display:block; background:#000; }
-    #instructions {
-      position: absolute;
-      left: 12px;
-      bottom: 12px;
-      color: #fff;
-      font-family: sans-serif;
-      background: rgba(0,0,0,0.4);
-      padding: 6px 10px;
-      border-radius: 4px;
-      pointer-events: none;
-      z-index: 10;
-      font-size: 13px;
-    }
+    body { margin: 0; overflow: hidden; }
+    #three-container { width: 100vw; height: 100vh; }
   </style>
 </head>
 <body>
-  <div id="three-container"></div>
 
-  <div id="instructions">
-    click and drag to control the animation
-  </div>
+<div id="three-container"></div>
 
-  <!-- Використовуйте HTTPS щоб уникнути mixed-content блокувань -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r75/three.min.js"></script>
-  <script src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/175711/bas.js"></script>
-  <script src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/175711/TextGeometry.js"></script>
-  <script src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/175711/FontUtils.js"></script>
-  <script src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/175711/pnltri.min.js"></script>
-  <script src="https://s3-us-west-2.amazonaws.com/s.cdpn.io/175711/droid_sans_bold.typeface.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/1.18.0/TweenMax.min.js"></script>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js";
+import { FontLoader } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/FontLoader.js";
+import { TextGeometry } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/geometries/TextGeometry.js";
 
-  <!-- Ваш основний скрипт (якщо він є) повинен йти після підключення бібліотек -->
-  <script>
-    // Місце для ініціалізації three.js сцени / імпорту вашого основного скрипта
-    // Наприклад, приклад простого створення сцени:
-    (function(){
-      var container = document.getElementById('three-container');
-      var scene = new THREE.Scene();
-      var camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 10000);
-      camera.position.z = 400;
-      var renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(container.clientWidth, container.clientHeight);
-      container.appendChild(renderer.domElement);
+const container = document.getElementById("three-container");
 
-      var geometry = new THREE.BoxGeometry(100,100,100);
-      var material = new THREE.MeshNormalMaterial();
-      var cube = new THREE.Mesh(geometry, material);
-      scene.add(cube);
+// scene
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x111111);
 
-      function animate(){
-        requestAnimationFrame(animate);
-        cube.rotation.x += 0.01;
-        cube.rotation.y += 0.02;
-        renderer.render(scene, camera);
-      }
-      animate();
+// camera
+const camera = new THREE.PerspectiveCamera(
+  60,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  100
+);
+camera.position.z = 5;
 
-      // При зміні розміру вікна — оновлюємо рендер
-      window.addEventListener('resize', function(){
-        camera.aspect = container.clientWidth / container.clientHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(container.clientWidth, container.clientHeight);
-      });
-    })();
-  </script>
+// renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+container.appendChild(renderer.domElement);
+
+// light
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(2, 2, 5);
+scene.add(light);
+
+// load font and create text
+const loader = new FontLoader();
+loader.load(
+  "https://cdn.jsdelivr.net/npm/three@0.160/examples/fonts/droid/droid_sans_bold.typeface.json",
+  (font) => {
+    const geometry = new TextGeometry("Hello", {
+      font: font,
+      size: 0.8,
+      height: 0.2,
+    });
+
+    geometry.center();
+
+    const material = new THREE.MeshStandardMaterial({ color: 0x00ffcc });
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    animate();
+  }
+);
+
+// animation loop
+function animate() {
+  requestAnimationFrame(animate);
+  scene.rotation.y += 0.01;
+  renderer.render(scene, camera);
+}
+
+// resize
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+
 </body>
 </html>
