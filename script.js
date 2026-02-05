@@ -1,223 +1,361 @@
-(function() {
-    'use strict';
-    // 'To actually be able to display anything with Three.js, we need three things:
-    // A scene, a camera, and a renderer so we can render the scene with the camera.'
-    // - https://threejs.org/docs/#Manual/Introduction/Creating_a_scene
+//capture the window loading
+window.onload = init;
 
-    var scene, camera, renderer;
+function init() {
+  var root = new THREERoot({
+    createCameraControls:false,
+		antialias: true,
+    fov:60
+  });
+    
+//setup the scene
+    
+  root.renderer.setClearColor(0x3AAFA9); 
+  root.renderer.setPixelRatio(window.devicePixelRatio || 1);
+  root.camera.position.set(0, 0, 400);
 
-    // I guess we need this stuff too
-    var container, HEIGHT,
-        WIDTH, fieldOfView, aspectRatio,
-        nearPlane, farPlane, stats,
-        geometry, particleCount,
-        i, h, color, size,
-        materials = [],
-        mouseX = 0,
-        mouseY = 0,
-        windowHalfX, windowHalfY, cameraZ,
-        fogHex, fogDensity, parameters = {},
-        parameterCount, particles;
 
-    init();
-    animate();
+//create the text animation variable
+    
+  var textAnimation = createTextAnimation();
+  textAnimation.position.y = -10; 
+  root.scene.add(textAnimation);
 
-    function init() {
+ //set the timeline aspects of the animation
+    
+  var tl = new TimelineMax({
+    repeat:-1, //-1 loop
+    repeatDelay:0.25,
+    yoyo:true
+  });
+  tl.fromTo(textAnimation, 4, //4
+    {animationProgress:0.0},
+    {animationProgress:1.0, ease:Power1.easeInOut},
+    0
+  );
 
-        HEIGHT = window.innerHeight;
-        WIDTH = window.innerWidth;
-        windowHalfX = WIDTH / 2;
-        windowHalfY = HEIGHT / 2;
+  createTweenScrubber(tl);
+}
 
-        fieldOfView = 75;
-        aspectRatio = WIDTH / HEIGHT;
-        nearPlane = 1;
-        farPlane = 3000;
-        
-        var GUI = dat.gui.GUI;
+//create the text to be animated
 
-        /* 	fieldOfView — Camera frustum vertical field of view.
-	aspectRatio — Camera frustum aspect ratio.
-	nearPlane — Camera frustum near plane.
-	farPlane — Camera frustum far plane.
+function createTextAnimation() {
+  var geometry = generateTextGeometry('GONE WITH THE WIND', {
+    size:14,
+    height:0,
+    font:'droid sans',
+    weight:'bold',
+    style:'normal',
+    anchor:{x:0.5, y:0.5, z:0.0}
+  });
 
-	- https://threejs.org/docs/#Reference/Cameras/PerspectiveCamera
+  THREE.BAS.Utils.separateFaces(geometry);
 
-	In geometry, a frustum (plural: frusta or frustums)
-	is the portion of a solid (normally a cone or pyramid)
-	that lies between two parallel planes cutting it. - wikipedia.		*/
+  return new TextAnimation(geometry);
+}
 
-        cameraZ = farPlane / 3; /*	So, 1000? Yes! move on!	*/
-        fogHex = 0x000000; /* As black as your heart.	*/
-        fogDensity = 0.0007; /* So not terribly dense?	*/
+//mathematical details of the animation
 
-        camera = new THREE.PerspectiveCamera(fieldOfView, aspectRatio, nearPlane, farPlane);
-        camera.position.z = cameraZ;
+function generateTextGeometry(text, params) {
+  var geometry = new THREE.TextGeometry(text, params);
 
-        scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(fogHex, fogDensity);
+  geometry.computeBoundingBox();
 
-        container = document.createElement('div');
-        document.body.appendChild(container);
-        document.body.style.margin = 0;
-        document.body.style.overflow = 'hidden';
+  geometry.userData = {};
+  geometry.userData.size = {
+    width: geometry.boundingBox.max.x - geometry.boundingBox.min.x,
+    height: geometry.boundingBox.max.y - geometry.boundingBox.min.y,
+    depth: geometry.boundingBox.max.z - geometry.boundingBox.min.z
+  };
 
-        geometry = new THREE.Geometry(); /*	NO ONE SAID ANYTHING ABOUT MATH! UGH!	*/
+  var anchorX = geometry.userData.size.width * -params.anchor.x;
+  var anchorY = geometry.userData.size.height * -params.anchor.y;
+  var anchorZ = geometry.userData.size.depth * -params.anchor.z;
+  var matrix = new THREE.Matrix4().makeTranslation(anchorX, anchorY, anchorZ);
 
-        particleCount = 60000; /* Leagues under the sea */
+  geometry.applyMatrix(matrix);
 
-        /*	Hope you took your motion sickness pills;
-	We're about to get loopy!	*/
+  return geometry;
+} 
 
-        for (i = 0; i < particleCount; i++) {
 
-            var vertex = new THREE.Vector3();
-            vertex.x = Math.random() * 2000 - 1000;
-            vertex.y = Math.random() * 2000 - 1000;
-            vertex.z = Math.random() * 2000 - 1000;
+////////////////////
+// CLASSES
+////////////////////
 
-            geometry.vertices.push(vertex);
-        }
+function TextAnimation(textGeometry) {
+  var bufferGeometry = new THREE.BAS.ModelBufferGeometry(textGeometry);
 
-        /*	We can't stop here, this is bat country!	*/
+  var aAnimation = bufferGeometry.createAttribute('aAnimation', 2);
+  var aCentroid = bufferGeometry.createAttribute('aCentroid', 3);
+  var aControl0 = bufferGeometry.createAttribute('aControl0', 3);
+  var aControl1 = bufferGeometry.createAttribute('aControl1', 3);
+  var aEndPosition = bufferGeometry.createAttribute('aEndPosition', 3);
 
-        parameters = [
-            [
-                [1, 1, 0.5], 5
-            ],
-            [
-                [0.95, 1, 0.5], 4
-            ],
-            [
-                [0.90, 1, 0.5], 3
-            ],
-            [
-                [0.85, 1, 0.5], 2
-            ],
-            [
-                [0.80, 1, 0.5], 1
-            ]
-        ];
-        parameterCount = parameters.length;
+  var faceCount = bufferGeometry.faceCount;
+  var i, i2, i3, i4, v;
 
-        /*	I told you to take those motion sickness pills.
-	Clean that vommit up, we're going again!	*/
+  var size = textGeometry.userData.size;
 
-        for (i = 0; i < parameterCount; i++) {
+  var maxDelayX = 2.0;
+  var maxDelayY = 0.25;
+  var minDuration = 2;
+  var maxDuration = 8;
+  var stretch = 0.25;
 
-            color = parameters[i][0];
-            size = parameters[i][1];
+  this.animationDuration = maxDelayX + maxDelayY + maxDuration - 3;
+  this._animationProgress = 0;
 
-            materials[i] = new THREE.PointCloudMaterial({
-                size: size
-            });
+  for (i = 0, i2 = 0, i3 = 0, i4 = 0; i < faceCount; i++, i2 += 6, i3 += 9, i4 += 12) {
+    var face = textGeometry.faces[i];
+    var centroid = THREE.BAS.Utils.computeCentroid(textGeometry, face);
 
-            particles = new THREE.PointCloud(geometry, materials[i]);
+    // animation
+    var delayX = Math.max(0, (centroid.x / size.width) * maxDelayX);
+    var delayY = Math.max(0, (1.0 - (centroid.y / size.height)) * maxDelayY);
+    var duration = THREE.Math.randFloat(minDuration, maxDuration);
 
-            particles.rotation.x = Math.random() * 6;
-            particles.rotation.y = Math.random() * 6;
-            particles.rotation.z = Math.random() * 6;
-
-            scene.add(particles);
-        }
-
-        /*	If my calculations are correct, when this baby hits 88 miles per hour...
-	you're gonna see some serious shit.	*/
-
-        renderer = new THREE.WebGLRenderer(); /*	Rendererererers particles.	*/
-        renderer.setPixelRatio(window.devicePixelRatio); /*	Probably 1; unless you're fancy.	*/
-        renderer.setSize(WIDTH, HEIGHT); /*	Full screen baby Wooooo!	*/
-
-        container.appendChild(renderer.domElement); /* Let's add all this crazy junk to the page.	*/
-
-        /*	I don't know about you, but I like to know how bad my
-		code is wrecking the performance of a user's machine.
-		Let's see some damn stats!	*/
-
-        stats = new Stats();
-        stats.domElement.style.position = 'absolute';
-        stats.domElement.style.top = '0px';
-        stats.domElement.style.right = '0px';
-        container.appendChild(stats.domElement);
-
-        /* Event Listeners */
-
-        window.addEventListener('resize', onWindowResize, false);
-        document.addEventListener('mousemove', onDocumentMouseMove, false);
-        document.addEventListener('touchstart', onDocumentTouchStart, false);
-        document.addEventListener('touchmove', onDocumentTouchMove, false);
-
+    for (v = 0; v < 6; v += 2) {
+      aAnimation.array[i2 + v    ] = delayX + delayY + Math.random() * stretch;
+      aAnimation.array[i2 + v + 1] = duration;
     }
 
-    function animate() {
-        requestAnimationFrame(animate);
-        render();
-        stats.update();
+    // centroid
+    for (v = 0; v < 9; v += 3) {
+      aCentroid.array[i3 + v    ] = centroid.x;
+      aCentroid.array[i3 + v + 1] = centroid.y;
+      aCentroid.array[i3 + v + 2] = centroid.z;
     }
 
-    function render() {
-        var time = Date.now() * 0.00005;
+    // ctrl
+    var c0x = centroid.x + THREE.Math.randFloat(40, 120);
+    var c0y = centroid.y + size.height * THREE.Math.randFloat(0.0, 12.0);
+    var c0z = THREE.Math.randFloatSpread(120);
 
-        camera.position.x += (mouseX - camera.position.x) * 0.05;
-        camera.position.y += (-mouseY - camera.position.y) * 0.05;
+    var c1x = centroid.x + THREE.Math.randFloat(80, 120) * -1;
+    var c1y = centroid.y + size.height * THREE.Math.randFloat(0.0, 12.0);
+    var c1z = THREE.Math.randFloatSpread(120);
 
-        camera.lookAt(scene.position);
+    for (v = 0; v < 9; v += 3) {
+      aControl0.array[i3 + v    ] = c0x;
+      aControl0.array[i3 + v + 1] = c0y;
+      aControl0.array[i3 + v + 2] = c0z;
 
-        for (i = 0; i < scene.children.length; i++) {
-
-            var object = scene.children[i];
-
-            if (object instanceof THREE.PointCloud) {
-
-                object.rotation.y = time * (i < 4 ? i + 1 : -(i + 1));
-            }
-        }
-
-        for (i = 0; i < materials.length; i++) {
-
-            color = parameters[i][0];
-
-            h = (360 * (color[0] + time) % 360) / 360;
-            materials[i].color.setHSL(h, color[1], color[2]);
-        }
-
-        renderer.render(scene, camera);
+      aControl1.array[i3 + v    ] = c1x;
+      aControl1.array[i3 + v + 1] = c1y;
+      aControl1.array[i3 + v + 2] = c1z;
     }
 
-    function onDocumentMouseMove(e) {
-        mouseX = e.clientX - windowHalfX;
-        mouseY = e.clientY - windowHalfY;
+    // end position
+    var x, y, z;
+
+    x = centroid.x + THREE.Math.randFloatSpread(120);
+    y = centroid.y + size.height * THREE.Math.randFloat(0.0, 12.0);
+    z = THREE.Math.randFloat(-20, 20);
+
+    for (v = 0; v < 9; v += 3) {
+      aEndPosition.array[i3 + v    ] = x;
+      aEndPosition.array[i3 + v + 1] = y;
+      aEndPosition.array[i3 + v + 2] = z;
+    }
+  }
+
+  var material = new THREE.BAS.BasicAnimationMaterial({
+      shading: THREE.FlatShading,
+      side: THREE.DoubleSide,
+      transparent: true,
+      uniforms: {
+        uTime: {type: 'f', value: 0}
+      },
+      shaderFunctions: [
+        THREE.BAS.ShaderChunk['cubic_bezier'],
+        THREE.BAS.ShaderChunk['ease_out_cubic']
+      ],
+      shaderParameters: [
+        'uniform float uTime;',
+        'attribute vec2 aAnimation;',
+        'attribute vec3 aCentroid;',
+        'attribute vec3 aControl0;',
+        'attribute vec3 aControl1;',
+        'attribute vec3 aEndPosition;'
+      ],
+      shaderVertexInit: [
+        'float tDelay = aAnimation.x;',
+        'float tDuration = aAnimation.y;',
+        'float tTime = clamp(uTime - tDelay, 0.0, tDuration);',
+        'float tProgress =  ease(tTime, 0.0, 1.0, tDuration);'
+         //'float tProgress = tTime / tDuration;'
+      ],
+      shaderTransformPosition: [
+        'vec3 tPosition = transformed - aCentroid;',
+        'tPosition *= 1.0 - tProgress;',
+        'tPosition += aCentroid;',
+        'tPosition += cubicBezier(tPosition, aControl0, aControl1, aEndPosition, tProgress);',
+        'transformed = tPosition;'
+
+        // 'vec3 tPosition = transformed;',
+        // 'tPosition *= 1.0 - tProgress;',
+        // 'tPosition += cubicBezier(transformed, aControl0, aControl1, aEndPosition, tProgress);',
+        // 'tPosition += mix(transformed, aEndPosition, tProgress);',
+        // 'transformed = tPosition;'
+      ]
+    },
+    {
+      diffuse: 0xffffff //0000
+    }
+  );
+
+  THREE.Mesh.call(this, bufferGeometry, material);
+
+  this.frustumCulled = false;
+}
+TextAnimation.prototype = Object.create(THREE.Mesh.prototype);
+TextAnimation.prototype.constructor = TextAnimation;
+
+Object.defineProperty(TextAnimation.prototype, 'animationProgress', {
+  get: function() {
+    return this._animationProgress;
+  },
+  set: function(v) {
+    this._animationProgress = v;
+    this.material.uniforms['uTime'].value = this.animationDuration * v;
+  }
+});
+
+function THREERoot(params) {
+  params = utils.extend({
+    antialias:false,
+
+    fov:60,
+    zNear:1,
+    zFar:10000,
+
+    createCameraControls:true
+  }, params);
+
+  this.renderer = new THREE.WebGLRenderer({
+    antialias:params.antialias
+  });
+  document.getElementById('three-container').appendChild(this.renderer.domElement);
+
+  this.camera = new THREE.PerspectiveCamera(
+    params.fov,
+    window.innerWidth / window.innerHeight,
+    params.zNear,
+    params.zfar
+  );
+
+  this.scene = new THREE.Scene();
+
+  if (params.createCameraControls) {
+    this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+  }
+
+  this.resize = this.resize.bind(this);
+  this.tick = this.tick.bind(this);
+
+  this.resize();
+  this.tick();
+
+  window.addEventListener('resize', this.resize, false);
+}
+THREERoot.prototype = {
+  tick: function() {
+    this.update();
+    this.render();
+    requestAnimationFrame(this.tick);
+  },
+  update: function() {
+    this.controls && this.controls.update();
+  },
+  render: function() {
+    this.renderer.render(this.scene, this.camera);
+  },
+  resize: function() {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+};
+
+////////////////////
+// UTILS
+////////////////////
+
+var utils = {
+  extend:function(dst, src) {
+    for (var key in src) {
+      dst[key] = src[key];
     }
 
-    /*	Mobile users?  I got your back homey	*/
+    return dst;
+  },
+  randSign: function() {
+    return Math.random() > 0.5 ? 1 : -1;
+  }
+};
 
-    function onDocumentTouchStart(e) {
+function createTweenScrubber(tween, seekSpeed) {
+  seekSpeed = seekSpeed || 0.001;
 
-        if (e.touches.length === 1) {
+  function stop() {
+    TweenMax.to(tween, 2, {timeScale:0});
+  }
 
-            e.preventDefault();
-            mouseX = e.touches[0].pageX - windowHalfX;
-            mouseY = e.touches[0].pageY - windowHalfY;
-        }
+  function resume() {
+    TweenMax.to(tween, 2, {timeScale:1});
+  }
+
+  function seek(dx) {
+    var progress = tween.progress();
+    var p = THREE.Math.clamp((progress + (dx * seekSpeed)), 0, 1);
+
+    tween.progress(p);
+  }
+
+  var _cx = 0;
+
+  // desktop
+  var mouseDown = false;
+  document.body.style.cursor = 'pointer';
+
+  window.addEventListener('mousedown', function(e) {
+    mouseDown = true;
+    document.body.style.cursor = 'ew-resize';
+    _cx = e.clientX;
+    stop();
+  });
+  window.addEventListener('mouseup', function(e) {
+    mouseDown = false;
+    document.body.style.cursor = 'pointer';
+    resume();
+  });
+  window.addEventListener('mousemove', function(e) {
+    if (mouseDown === true) {
+      var cx = e.clientX;
+      var dx = cx - _cx;
+      _cx = cx;
+
+      seek(dx);
     }
+  });
+  // mobile
+  window.addEventListener('touchstart', function(e) {
+    _cx = e.touches[0].clientX;
+    stop();
+    e.preventDefault();
+  });
+  window.addEventListener('touchend', function(e) {
+    resume();
+    e.preventDefault();
+  });
+  window.addEventListener('touchmove', function(e) {
+    var cx = e.touches[0].clientX;
+    var dx = cx - _cx;
+    _cx = cx;
 
-    function onDocumentTouchMove(e) {
-
-        if (e.touches.length === 1) {
-
-            e.preventDefault();
-            mouseX = e.touches[0].pageX - windowHalfX;
-            mouseY = e.touches[0].pageY - windowHalfY;
-        }
-    }
-
-    function onWindowResize() {
-
-        windowHalfX = window.innerWidth / 2;
-        windowHalfY = window.innerHeight / 2;
-
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-})();
+    seek(dx);
+    e.preventDefault();
+  });
+}
