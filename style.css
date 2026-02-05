@@ -1,14 +1,1 @@
-``css name=styles.css
-html, body{
-  overflow: hidden;
-  padding: 0px;
-  margin: 0px;
-  background: #100;
-}
-```
 
-Додайте цей файл у репозиторій або замініть цими правилами існуючі стилі у вашому CSS/HTML. Якщо у вас є index.html — підключіть його так:
-
-<link rel="stylesheet" href="styles.css">
-
-або вставте правила безпосередньо в <style>…</style> в index.html.
