@@ -1,341 +1,334 @@
-<!doctype html>
-<html lang="uk">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Flowfield — follow on hover</title>
-
-  <style>
-    /* Requested background color #F5F5F5 and no ripple button */
+<style>
     body, html {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background-color: #F5F5F5;
-      color: #111;
-      font-family: 'Inter', sans-serif;
-      height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background-color: #010005; 
+        color: white;
+        font-family: 'Inter', sans-serif;
     }
-
     #nebula-container {
-      width: 100vw;
-      height: 100vh;
-      cursor: grab;
-      position: relative;
+        width: 100vw;
+        height: 100vh;
+        cursor: grab;
     }
     #nebula-container:active {
-      cursor: grabbing;
+        cursor: grabbing;
     }
-
-    /* small info box (optional) */
     #info {
-      position: absolute;
-      top: 15px;
-      left: 15px;
-      padding: 10px 15px;
-      background: rgba(255,255,255,0.7);
-      border: 1px solid rgba(0,0,0,0.06);
-      border-radius: 10px;
-      font-size: 14px;
-      line-height: 1.5;
-      pointer-events: none;
-      color: #111;
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+        position: absolute;
+        top: 15px;
+        left: 15px;
+        padding: 10px 15px;
+        background: rgba(10, 10, 20, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        font-size: 14px;
+        line-height: 1.5;
+        pointer-events: none;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+    }
+    #ripple-btn {
+        position: absolute;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 14px 28px;
+        border: 1px solid rgba(255, 165, 0, 0.3);
+        border-radius: 12px;
+        background: rgba(255, 69, 0, 0.15); 
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        color: white;
+        font-family: 'Inter', sans-serif;
+        font-size: 16px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.3s, border-color 0.3s, transform 0.3s, opacity 0.4s;
+        box-shadow: 0 0 20px rgba(255, 69, 0, 0.4); 
+    }
+    #ripple-btn:hover {
+        background: rgba(255, 69, 0, 0.3);
+        border-color: rgba(255, 165, 0, 0.5);
+        transform: translateX(-50%) scale(1.05);
+    }
+    #ripple-btn:active {
+        transform: translateX(-50%) scale(1.0);
+    }
+    #ripple-btn.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+</style>
+
+<div id="info">
+    Click and drag to rotate. <br>
+    Scroll to zoom.
+</div>
+<div id="nebula-container"></div>
+<button id="ripple-btn">Unleash Supernova</button>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+    }
+}
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.getElementById('nebula-container').appendChild(renderer.domElement);
+    
+    const cameraShakeGroup = new THREE.Group();
+    scene.add(cameraShakeGroup);
+    cameraShakeGroup.add(camera);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.03;
+    controls.minDistance = 15;
+    controls.maxDistance = 150;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.1;
+
+    const particleCount = 200000;
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const randoms = new Float32Array(particleCount);
+
+    const colorPalette = [
+        new THREE.Color("#ff4800"), 
+        new THREE.Color("#ff8c00"), 
+        new THREE.Color("#ffd700"), 
+        new THREE.Color("#dc2626"), 
+    ];
+
+    const arms = 5;
+    const armSpread = 0.5;
+    const galaxyRadius = 40;
+
+    for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const armIndex = Math.floor(Math.random() * arms);
+        const angle = (armIndex / arms) * Math.PI * 2;
+        const dist = Math.random() * galaxyRadius;
+        const armAngle = dist * 0.15;
+        const spiralAngle = angle + armAngle + (Math.random() - 0.5) * armSpread;
+        const randomHeight = (Math.random() - 0.5) * 5 * (1 - dist / galaxyRadius);
+
+        positions[i3] = Math.cos(spiralAngle) * dist;
+        positions[i3 + 1] = Math.sin(spiralAngle) * dist;
+        positions[i3 + 2] = randomHeight;
+        
+        const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
+        const lightness = 0.7 + Math.random() * 0.3;
+        colors[i3] = color.r * lightness;
+        colors[i3 + 1] = color.g * lightness;
+        colors[i3 + 2] = color.b * lightness;
+
+        randoms[i] = Math.random() * 10.0;
     }
 
-    /* canvas should fill container */
-    #nebula-container canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-  </style>
-</head>
-<body>
-  <div id="nebula-container">
-    <!-- the script will use this canvas (or create one if missing) -->
-    <canvas id="canvas"></canvas>
-    <div id="info">Наведи курсор — частинки прискорюються та слідують за ним</div>
-  </div>
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
 
-  <script type="module">
-    // Flowfield particle animation — particles move slowly by default,
-    // but when the cursor is near they speed up and follow the cursor.
-
-    // Vector helper
-    class Vector {
-      constructor(x = 0, y = 0) { this.x = x; this.y = y; }
-      addTo(v) { if (!v) return this; this.x += v.x; this.y += v.y; return this; }
-      div(s) { return new Vector(this.x / s, this.y / s); }
-      mult(s) { this.x *= s; this.y *= s; return this; }
-      getLength() { return Math.sqrt(this.x * this.x + this.y * this.y); }
-      setLength(len) {
-        const l = this.getLength() || 1;
-        this.x = (this.x / l) * len;
-        this.y = (this.y / l) * len;
-        return this;
-      }
-      setAngle(a) {
-        const len = this.getLength() || 1;
-        this.x = Math.cos(a) * len;
-        this.y = Math.sin(a) * len;
-        return this;
-      }
-      set(x, y) { this.x = x; this.y = y; return this; }
-      copy() { return new Vector(this.x, this.y); }
-      reset() { this.x = 0; this.y = 0; return this; }
-    }
-
-    // Minimal Perlin-like noise (perlin3 + simplex3 alias)
-    const noise = (function() {
-      const p = new Uint8Array(512);
-      const permutation = new Uint8Array(256);
-      for (let i = 0; i < 256; i++) permutation[i] = i;
-      function seed(seed) {
-        let s = seed;
-        if (s > 0 && s < 1) s *= 65536;
-        s = Math.floor(s) || 1;
-        for (let i = 255; i > 0; i--) {
-          s = (s * 16807) % 2147483647;
-          const r = (s & 0xffff) / 65536;
-          const j = Math.floor(r * (i + 1));
-          const tmp = permutation[i];
-          permutation[i] = permutation[j];
-          permutation[j] = tmp;
-        }
-        for (let i = 0; i < 512; i++) p[i] = permutation[i & 255];
-      }
-      function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
-      function lerp(a, b, t) { return a + t * (b - a); }
-      function grad(hash, x, y, z) {
-        const h = hash & 15;
-        const u = h < 8 ? x : y;
-        const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
-        return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
-      }
-      function perlin3(x, y, z) {
-        const X = Math.floor(x) & 255;
-        const Y = Math.floor(y) & 255;
-        const Z = Math.floor(z) & 255;
-        x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
-        const u = fade(x), v = fade(y), w = fade(z);
-        const A = p[X] + Y, AA = p[A] + Z, AB = p[A + 1] + Z;
-        const B = p[X + 1] + Y, BA = p[B] + Z, BB = p[B + 1] + Z;
-        return lerp(
-          lerp(
-            lerp(grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z), u),
-            lerp(grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z), u), v
-          ),
-          lerp(
-            lerp(grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1), u),
-            lerp(grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1), u), v
-          ),
-          w
-        );
-      }
-      seed(Math.random() * 65536);
-      return { seed, perlin3, simplex3: perlin3 };
-    })();
-
-    // Parameters
-    let canvas, ctx, field, w, h, fieldSize, columns, rows, noiseZ, particles;
-    noiseZ = 0;
-
-    let particleCount = 2000;
-    let particleSize = 0.9;
-    fieldSize = 70;
-    let fieldForce = 0.12; // base field force (keeps particles slow)
-    let noiseSpeed = 0.003;
-    let sORp = true;
-    let trailLength = 0.12;
-    let hueBase = 10;
-    let hueRange = 5;
-    let maxSpeed = 1.6; // base slow max speed
-
-    // Mouse / hover state
-    const mouse = { x: 0, y: 0, vx: 0, vy: 0, hover: false, down: false };
-
-    // Follow/near parameters
-    const followRadius = 220;            // radius where particles start following
-    const attractionStrength = 0.9;     // acceleration toward mouse at close distance
-    const speedBoostMultiplier = 2.8;   // maxSpeed multiplier when very close
-
-    // Particle class
-    class Particle {
-      constructor(x, y) {
-        this.pos = new Vector(x, y);
-        this.vel = new Vector(Math.random() * 0.4 - 0.2, Math.random() * 0.4 - 0.2);
-        this.acc = new Vector(0, 0);
-        this.hue = Math.random() * 30 - 15;
-      }
-      move(acc) {
-        if (acc) this.acc.addTo(acc);
-        this.vel.addTo(this.acc);
-        const cap = maxSpeed * speedBoostMultiplier * 1.5;
-        if (this.vel.getLength() > cap) this.vel.setLength(cap);
-        this.pos.addTo(this.vel);
-        this.acc.reset();
-      }
-      wrap() {
-        if (this.pos.x > w) this.pos.x = 0;
-        else if (this.pos.x < -fieldSize) this.pos.x = w - 1;
-        if (this.pos.y > h) this.pos.y = 0;
-        else if (this.pos.y < -fieldSize) this.pos.y = h - 1;
-      }
-    }
-
-    // Setup canvas & events
-    (function ensureCanvas() {
-      canvas = document.querySelector("#canvas");
-      if (!canvas) {
-        canvas = document.createElement('canvas');
-        canvas.id = 'canvas';
-        const container = document.getElementById('nebula-container') || document.body;
-        container.appendChild(canvas);
-      }
-      ctx = canvas.getContext("2d");
-    })();
-
-    // Pointer listeners
-    canvas.addEventListener('pointermove', (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      mouse.vx = x - (mouse.x || x);
-      mouse.vy = y - (mouse.y || y);
-      mouse.x = x; mouse.y = y;
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0 },
+            rippleActive: { value: 0.0 },
+            rippleTime: { value: 0.0 },
+            uPointSize: { value: 3.0 * window.devicePixelRatio },
+        },
+        vertexShader: `
+            uniform float time;
+            uniform float rippleActive;
+            uniform float rippleTime;
+            uniform float uPointSize;
+            attribute vec3 color;
+            attribute float aRandom;
+            varying vec3 vColor;
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+            float snoise(vec2 v) {
+                const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+                vec2 i  = floor(v + dot(v, C.yy) );
+                vec2 x0 = v -   i + dot(i, C.xx);
+                vec2 i1;
+                i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+                vec4 x12 = x0.xyxy + C.xxzz;
+                x12.xy -= i1;
+                i = mod289(i);
+                vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+                vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+                m = m*m; m = m*m;
+                vec3 x = 2.0 * fract(p * C.www) - 1.0;
+                vec3 h = abs(x) - 0.5;
+                vec3 ox = floor(x + 0.5);
+                vec3 a0 = x - ox;
+                m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+                vec3 g;
+                g.x  = a0.x  * x0.x  + h.x  * x0.y;
+                g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+                return 130.0 * dot(m, g);
+            }
+            void main() {
+                vColor = color;
+                vec3 pos = position;
+                float morphFactor = sin(time * 0.1 + aRandom) * 0.5 + 0.5;
+                float noiseFreq = 0.05;
+                float noiseAmp = 15.0;
+                vec3 nebulaPos = pos;
+                nebulaPos.x += snoise(pos.yz * noiseFreq + time * 0.05) * noiseAmp;
+                nebulaPos.y += snoise(pos.xz * noiseFreq + time * 0.05) * noiseAmp;
+                nebulaPos.z += snoise(pos.xy * noiseFreq + time * 0.05) * noiseAmp;
+                pos = mix(pos, nebulaPos, morphFactor);
+                float angle = time * 0.05;
+                mat2 rotation = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+                pos.xy = rotation * pos.xy;
+                if (rippleActive > 0.5) {
+                    float timeSinceRipple = time - rippleTime;
+                    if (timeSinceRipple > 0.0) {
+                        float waveSpeed = 80.0;
+                        float waveWidth = 25.0; 
+                        float waveRadius = timeSinceRipple * waveSpeed;
+                        float distFromCenter = length(pos.xy);
+                        float distFromWavefront = abs(distFromCenter - waveRadius);
+                        float profile = exp(-pow(distFromWavefront / waveWidth, 2.0));
+                        float fadeout = smoothstep(4.0, 2.5, timeSinceRipple);
+                        float waveInfluence = profile * fadeout;
+                        if (waveInfluence > 0.01) {
+                            vec3 dir = normalize(pos);
+                            pos += dir * waveInfluence * 35.0; 
+                            pos.z += snoise(pos.xy * 0.1 + time * 2.0) * waveInfluence * 10.0;
+                            vColor += vec3(1.0, 1.0, 1.0) * waveInfluence * 1.5;
+                        }
+                    }
+                }
+                vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                gl_Position = projectionMatrix * mvPosition;
+                gl_PointSize = uPointSize / -mvPosition.z;
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vColor;
+            void main() {
+                float r = length(gl_PointCoord - vec2(0.5)) * 2.0;
+                if (r > 1.0) discard;
+                float angle = atan(gl_PointCoord.y - 0.5, gl_PointCoord.x - 0.5);
+                float spikes = 5.0;
+                float star_boundary = cos(angle * spikes) * 0.2 + 0.8;
+                float alpha = 1.0 - smoothstep(star_boundary - 0.1, star_boundary, r);
+                alpha *= pow(1.0 - r, 0.4);
+                gl_FragColor = vec4(vColor, alpha);
+            }
+        `,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
     });
-    canvas.addEventListener('pointerenter', () => { mouse.hover = true; });
-    canvas.addEventListener('pointerleave', () => { mouse.hover = false; });
-    canvas.addEventListener('pointerdown', () => { mouse.down = true; });
-    window.addEventListener('pointerup', () => { mouse.down = false; });
 
-    window.addEventListener("resize", reset);
+    const particles = new THREE.Points(geometry, material);
+    scene.add(particles);
+    camera.position.z = 70;
 
-    function initParticles() {
-      particles = [];
-      for (let i = 0; i < particleCount; i++) {
-        particles.push(new Particle(Math.random() * w, Math.random() * h));
-      }
-    }
+    const composer = new EffectComposer(renderer);
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
 
-    function initField() {
-      field = new Array(columns);
-      for (let x = 0; x < columns; x++) {
-        field[x] = new Array(rows);
-        for (let y = 0; y < rows; y++) {
-          field[x][y] = new Vector(0, 0);
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+    const baseBloomStrength = 0.65; 
+    bloomPass.threshold = 0;
+    bloomPass.strength = baseBloomStrength;
+    bloomPass.radius = 0.5;
+    composer.addPass(bloomPass);
+
+    const outputPass = new OutputPass();
+    composer.addPass(outputPass);
+
+    const clock = new THREE.Clock();
+    let shakeIntensity = 0;
+    let bloomPulseTime = -1;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const deltaTime = clock.getDelta();
+        const time = material.uniforms.time.value += deltaTime;
+        
+        if (bloomPulseTime > 0) {
+            const timeSincePulse = time - bloomPulseTime;
+            const pulseDuration = 2.0;
+            if (timeSincePulse < pulseDuration) {
+                const pulseProgress = timeSincePulse / pulseDuration;
+                const pulseCurve = Math.sin(pulseProgress * Math.PI);
+                bloomPass.strength = baseBloomStrength + pulseCurve * 2.0;
+            } else {
+                bloomPass.strength = baseBloomStrength;
+                bloomPulseTime = -1;
+            }
         }
-      }
-    }
-
-    function calcField() {
-      if (sORp) {
-        for (let x = 0; x < columns; x++) {
-          for (let y = 0; y < rows; y++) {
-            const angle = noise.simplex3(x / 20, y / 20, noiseZ) * Math.PI * 2;
-            const length = noise.simplex3(x / 40 + 40000, y / 40 + 40000, noiseZ) * fieldForce;
-            field[x][y].setLength(Math.abs(length));
-            field[x][y].setAngle(angle);
-          }
-        }
-      } else {
-        for (let x = 0; x < columns; x++) {
-          for (let y = 0; y < rows; y++) {
-            const angle = noise.perlin3(x / 20, y / 20, noiseZ) * Math.PI * 2;
-            const length = noise.perlin3(x / 40 + 40000, y / 40 + 40000, noiseZ) * fieldForce;
-            field[x][y].setLength(Math.abs(length));
-            field[x][y].setAngle(angle);
-          }
-        }
-      }
-    }
-
-    function reset() {
-      w = canvas.width = window.innerWidth;
-      h = canvas.height = window.innerHeight;
-      noise.seed(Math.random());
-      columns = Math.round(w / fieldSize) + 1;
-      rows = Math.round(h / fieldSize) + 1;
-      initParticles();
-      initField();
-      mouse.x = w / 2; mouse.y = h / 2; mouse.vx = 0; mouse.vy = 0;
-    }
-
-    function draw() {
-      requestAnimationFrame(draw);
-      calcField();
-      noiseZ += noiseSpeed + (mouse.vx * 0.00025);
-      mouse.vx *= 0.86; mouse.vy *= 0.86;
-      drawBackground();
-      drawParticles();
-    }
-
-    function drawBackground() {
-      // use light translucent layer to create trails on light background
-      // small alpha to leave soft trails on #F5F5F5
-      ctx.fillStyle = "rgba(245,245,245," + trailLength + ")";
-      ctx.fillRect(0, 0, w, h);
-    }
-
-    function drawParticles() {
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-
-        // Draw particle — darker color on light background
-        const ps = Math.abs(p.vel.x + p.vel.y) * particleSize + 0.35;
-        const hue = (hueBase + p.hue + ((p.vel.x + p.vel.y) * hueRange));
-        // convert hue to HSL with low saturation to fit light background
-        ctx.fillStyle = "hsla(" + hue + ", 70%, 30%, 0.9)";
-        ctx.fillRect(p.pos.x, p.pos.y, ps, ps);
-
-        // Base field acceleration
-        const pos = p.pos.div(fieldSize);
-        let v = null;
-        if (pos.x >= 0 && pos.x < columns && pos.y >= 0 && pos.y < rows) {
-          v = field[Math.floor(pos.x)][Math.floor(pos.y)];
-        }
-        const acc = v ? v.copy().mult(0.9) : new Vector(0, 0);
-
-        // Add small swirl from mouse movement
-        acc.addTo(new Vector(mouse.vx * 0.015, mouse.vy * 0.015));
-
-        // If hovering and within followRadius -> particles accelerate toward mouse and speed up
-        if (mouse.hover) {
-          const dx = mouse.x - p.pos.x;
-          const dy = mouse.y - p.pos.y;
-          const distSq = dx * dx + dy * dy;
-          const r = followRadius;
-          if (distSq < r * r) {
-            const dist = Math.sqrt(distSq) || 0.0001;
-            const influence = 1 - dist / r; // 1 at close, 0 at boundary
-            const toMouse = new Vector(dx / dist, dy / dist);
-            const pressMultiplier = mouse.down ? 1.8 : 1.0;
-            const strength = attractionStrength * influence * pressMultiplier;
-            toMouse.setLength(strength);
-            acc.addTo(toMouse);
-
-            // speed boost: gently increase particle velocity toward mouse
-            const desired = new Vector(dx / dist, dy / dist).setLength(maxSpeed * (1 + influence * (speedBoostMultiplier - 1)));
-            p.vel.x = p.vel.x * (0.92) + desired.x * (0.08);
-            p.vel.y = p.vel.y * (0.92) + desired.y * (0.08);
-          }
+        
+        if (shakeIntensity > 0) {
+            cameraShakeGroup.position.x = (Math.random() - 0.5) * shakeIntensity;
+            cameraShakeGroup.position.y = (Math.random() - 0.5) * shakeIntensity;
+            shakeIntensity -= deltaTime * 2.0;
+        } else {
+            cameraShakeGroup.position.set(0, 0, 0);
         }
 
-        if (p.vel.getLength() > maxSpeed * speedBoostMultiplier) {
-          p.vel.setLength(maxSpeed * speedBoostMultiplier);
+        if (material.uniforms.rippleActive.value > 0.5) {
+            const timeSinceRipple = time - material.uniforms.rippleTime.value;
+            if (timeSinceRipple > 4.0) {
+                material.uniforms.rippleActive.value = 0.0;
+            }
         }
 
-        p.move(acc);
-        p.vel.mult(0.9995);
-        p.wrap();
-      }
+        controls.update();
+        composer.render();
     }
+    animate();
 
-    // Start
-    reset();
-    draw();
-  </script>
-</body>
-</html>
+    const rippleBtn = document.getElementById('ripple-btn');
+    rippleBtn.addEventListener('click', () => {
+        if (material.uniforms.rippleActive.value > 0.5) return;
+
+        material.uniforms.rippleTime.value = material.uniforms.time.value;
+        material.uniforms.rippleActive.value = 1.0;
+        
+        shakeIntensity = 1.0;
+        bloomPulseTime = material.uniforms.time.value;
+
+        rippleBtn.classList.add('disabled');
+        setTimeout(() => {
+            rippleBtn.classList.remove('disabled');
+        }, 4000);
+    });
+    
+    window.addEventListener('resize', () => {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+        composer.setSize(width, height);
+        material.uniforms.uPointSize.value = 3.0 * window.devicePixelRatio;
+    });
+
+</script>
