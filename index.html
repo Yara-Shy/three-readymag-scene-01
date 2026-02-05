@@ -1,334 +1,83 @@
-<style>
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Flowfield — follow on hover</title>
+
+  <style>
+    /* Фон білий; підлаштування для контенту */
     body, html {
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        background-color: #010005; 
-        color: white;
-        font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #FFFFFF;
+      color: #111;
+      font-family: 'Inter', sans-serif;
+      height: 100%;
     }
+
     #nebula-container {
-        width: 100vw;
-        height: 100vh;
-        cursor: grab;
+      width: 100vw;
+      height: 100vh;
+      cursor: grab;
+      position: relative;
     }
     #nebula-container:active {
-        cursor: grabbing;
+      cursor: grabbing;
     }
-    #info {
-        position: absolute;
-        top: 15px;
-        left: 15px;
-        padding: 10px 15px;
-        background: rgba(1255, 255, 255, 255);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 10px;
-        font-size: 14px;
-        line-height: 1.5;
-        pointer-events: none;
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-    }
+
+    /* кнопка трохи підлаштована для білого фону */
     #ripple-btn {
-        position: absolute;
-        bottom: 30px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 14px 28px;
-        border: 1px solid rgba(255, 165, 0, 0.3);
-        border-radius: 12px;
-        background: rgba(255, 69, 0, 0.15); 
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        color: white;
-        font-family: 'Inter', sans-serif;
-        font-size: 16px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: background 0.3s, border-color 0.3s, transform 0.3s, opacity 0.4s;
-        box-shadow: 0 0 20px rgba(255, 69, 0, 0.4); 
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 14px 28px;
+      border: 1px solid rgba(255, 165, 0, 0.3);
+      border-radius: 12px;
+      background: rgba(255, 165, 0, 0.12);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      color: #111;
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.3s, border-color 0.3s, transform 0.3s, opacity 0.4s;
+      box-shadow: 0 0 20px rgba(255, 165, 0, 0.12);
     }
     #ripple-btn:hover {
-        background: rgba(255, 69, 0, 0.3);
-        border-color: rgba(255, 165, 0, 0.5);
-        transform: translateX(-50%) scale(1.05);
+      background: rgba(255, 165, 0, 0.18);
+      border-color: rgba(255, 140, 0, 0.5);
+      transform: translateX(-50%) scale(1.05);
     }
     #ripple-btn:active {
-        transform: translateX(-50%) scale(1.0);
+      transform: translateX(-50%) scale(1.0);
     }
     #ripple-btn.disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-        pointer-events: none;
-    }
-</style>
-
-<div id="info">
-    Click and drag to rotate. <br>
-    Scroll to zoom.
-</div>
-<div id="nebula-container"></div>
-<button id="ripple-btn">Unleash Supernova</button>
-
-<script type="importmap">
-{
-    "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
-    }
-}
-</script>
-
-<script type="module">
-    import * as THREE from 'three';
-    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    document.getElementById('nebula-container').appendChild(renderer.domElement);
-    
-    const cameraShakeGroup = new THREE.Group();
-    scene.add(cameraShakeGroup);
-    cameraShakeGroup.add(camera);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.03;
-    controls.minDistance = 15;
-    controls.maxDistance = 150;
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.1;
-
-    const particleCount = 200000;
-    const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
-    const randoms = new Float32Array(particleCount);
-
-    const colorPalette = [
-        new THREE.Color("#ff4800"), 
-        new THREE.Color("#ff8c00"), 
-        new THREE.Color("#ffd700"), 
-        new THREE.Color("#dc2626"), 
-    ];
-
-    const arms = 5;
-    const armSpread = 0.5;
-    const galaxyRadius = 40;
-
-    for (let i = 0; i < particleCount; i++) {
-        const i3 = i * 3;
-        const armIndex = Math.floor(Math.random() * arms);
-        const angle = (armIndex / arms) * Math.PI * 2;
-        const dist = Math.random() * galaxyRadius;
-        const armAngle = dist * 0.15;
-        const spiralAngle = angle + armAngle + (Math.random() - 0.5) * armSpread;
-        const randomHeight = (Math.random() - 0.5) * 5 * (1 - dist / galaxyRadius);
-
-        positions[i3] = Math.cos(spiralAngle) * dist;
-        positions[i3 + 1] = Math.sin(spiralAngle) * dist;
-        positions[i3 + 2] = randomHeight;
-        
-        const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
-        const lightness = 0.7 + Math.random() * 0.3;
-        colors[i3] = color.r * lightness;
-        colors[i3 + 1] = color.g * lightness;
-        colors[i3 + 2] = color.b * lightness;
-
-        randoms[i] = Math.random() * 10.0;
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
     }
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 1));
-
-    const material = new THREE.ShaderMaterial({
-        uniforms: {
-            time: { value: 0 },
-            rippleActive: { value: 0.0 },
-            rippleTime: { value: 0.0 },
-            uPointSize: { value: 3.0 * window.devicePixelRatio },
-        },
-        vertexShader: `
-            uniform float time;
-            uniform float rippleActive;
-            uniform float rippleTime;
-            uniform float uPointSize;
-            attribute vec3 color;
-            attribute float aRandom;
-            varying vec3 vColor;
-            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-            vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-            vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
-            float snoise(vec2 v) {
-                const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-                vec2 i  = floor(v + dot(v, C.yy) );
-                vec2 x0 = v -   i + dot(i, C.xx);
-                vec2 i1;
-                i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-                vec4 x12 = x0.xyxy + C.xxzz;
-                x12.xy -= i1;
-                i = mod289(i);
-                vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
-                vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-                m = m*m; m = m*m;
-                vec3 x = 2.0 * fract(p * C.www) - 1.0;
-                vec3 h = abs(x) - 0.5;
-                vec3 ox = floor(x + 0.5);
-                vec3 a0 = x - ox;
-                m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-                vec3 g;
-                g.x  = a0.x  * x0.x  + h.x  * x0.y;
-                g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-                return 130.0 * dot(m, g);
-            }
-            void main() {
-                vColor = color;
-                vec3 pos = position;
-                float morphFactor = sin(time * 0.1 + aRandom) * 0.5 + 0.5;
-                float noiseFreq = 0.05;
-                float noiseAmp = 15.0;
-                vec3 nebulaPos = pos;
-                nebulaPos.x += snoise(pos.yz * noiseFreq + time * 0.05) * noiseAmp;
-                nebulaPos.y += snoise(pos.xz * noiseFreq + time * 0.05) * noiseAmp;
-                nebulaPos.z += snoise(pos.xy * noiseFreq + time * 0.05) * noiseAmp;
-                pos = mix(pos, nebulaPos, morphFactor);
-                float angle = time * 0.05;
-                mat2 rotation = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
-                pos.xy = rotation * pos.xy;
-                if (rippleActive > 0.5) {
-                    float timeSinceRipple = time - rippleTime;
-                    if (timeSinceRipple > 0.0) {
-                        float waveSpeed = 80.0;
-                        float waveWidth = 25.0; 
-                        float waveRadius = timeSinceRipple * waveSpeed;
-                        float distFromCenter = length(pos.xy);
-                        float distFromWavefront = abs(distFromCenter - waveRadius);
-                        float profile = exp(-pow(distFromWavefront / waveWidth, 2.0));
-                        float fadeout = smoothstep(4.0, 2.5, timeSinceRipple);
-                        float waveInfluence = profile * fadeout;
-                        if (waveInfluence > 0.01) {
-                            vec3 dir = normalize(pos);
-                            pos += dir * waveInfluence * 35.0; 
-                            pos.z += snoise(pos.xy * 0.1 + time * 2.0) * waveInfluence * 10.0;
-                            vColor += vec3(1.0, 1.0, 1.0) * waveInfluence * 1.5;
-                        }
-                    }
-                }
-                vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-                gl_Position = projectionMatrix * mvPosition;
-                gl_PointSize = uPointSize / -mvPosition.z;
-            }
-        `,
-        fragmentShader: `
-            varying vec3 vColor;
-            void main() {
-                float r = length(gl_PointCoord - vec2(0.5)) * 2.0;
-                if (r > 1.0) discard;
-                float angle = atan(gl_PointCoord.y - 0.5, gl_PointCoord.x - 0.5);
-                float spikes = 5.0;
-                float star_boundary = cos(angle * spikes) * 0.2 + 0.8;
-                float alpha = 1.0 - smoothstep(star_boundary - 0.1, star_boundary, r);
-                alpha *= pow(1.0 - r, 0.4);
-                gl_FragColor = vec4(vColor, alpha);
-            }
-        `,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending
-    });
-
-    const particles = new THREE.Points(geometry, material);
-    scene.add(particles);
-    camera.position.z = 70;
-
-    const composer = new EffectComposer(renderer);
-    const renderPass = new RenderPass(scene, camera);
-    composer.addPass(renderPass);
-
-    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-    const baseBloomStrength = 0.65; 
-    bloomPass.threshold = 0;
-    bloomPass.strength = baseBloomStrength;
-    bloomPass.radius = 0.5;
-    composer.addPass(bloomPass);
-
-    const outputPass = new OutputPass();
-    composer.addPass(outputPass);
-
-    const clock = new THREE.Clock();
-    let shakeIntensity = 0;
-    let bloomPulseTime = -1;
-
-    function animate() {
-        requestAnimationFrame(animate);
-        const deltaTime = clock.getDelta();
-        const time = material.uniforms.time.value += deltaTime;
-        
-        if (bloomPulseTime > 0) {
-            const timeSincePulse = time - bloomPulseTime;
-            const pulseDuration = 2.0;
-            if (timeSincePulse < pulseDuration) {
-                const pulseProgress = timeSincePulse / pulseDuration;
-                const pulseCurve = Math.sin(pulseProgress * Math.PI);
-                bloomPass.strength = baseBloomStrength + pulseCurve * 2.0;
-            } else {
-                bloomPass.strength = baseBloomStrength;
-                bloomPulseTime = -1;
-            }
-        }
-        
-        if (shakeIntensity > 0) {
-            cameraShakeGroup.position.x = (Math.random() - 0.5) * shakeIntensity;
-            cameraShakeGroup.position.y = (Math.random() - 0.5) * shakeIntensity;
-            shakeIntensity -= deltaTime * 2.0;
-        } else {
-            cameraShakeGroup.position.set(0, 0, 0);
-        }
-
-        if (material.uniforms.rippleActive.value > 0.5) {
-            const timeSinceRipple = time - material.uniforms.rippleTime.value;
-            if (timeSinceRipple > 4.0) {
-                material.uniforms.rippleActive.value = 0.0;
-            }
-        }
-
-        controls.update();
-        composer.render();
+    /* canvas should fill container */
+    #nebula-container canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
     }
-    animate();
+  </style>
+</head>
+<body>
+  <div id="nebula-container">
+    <canvas id="canvas"></canvas>
+  </div>
+  <button id="ripple-btn">Unleash Supernova</button>
 
-    const rippleBtn = document.getElementById('ripple-btn');
-    rippleBtn.addEventListener('click', () => {
-        if (material.uniforms.rippleActive.value > 0.5) return;
-
-        material.uniforms.rippleTime.value = material.uniforms.time.value;
-        material.uniforms.rippleActive.value = 1.0;
-        
-        shakeIntensity = 1.0;
-        bloomPulseTime = material.uniforms.time.value;
-
-        rippleBtn.classList.add('disabled');
-        setTimeout(() => {
-            rippleBtn.classList.remove('disabled');
-        }, 4000);
-    });
-    
-    window.addEventListener('resize', () => {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        renderer.setSize(width, height);
-        composer.setSize(width, height);
-        material.uniforms.uPointSize.value = 3.0 * window.devicePixelRatio;
-    });
-
-</script>
+  <script type="module">
+    // Підключаємо логіку анімації з script.js (залишаємо animation модуль у script.js)
+    import './script.js';
+  </script>
+</body>
+</html>
