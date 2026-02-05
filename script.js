@@ -1,469 +1,386 @@
-import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+// Flowfield particle animation (замінено оригінальний Three.js код на 2D canvas flowfield)
+// Вимога: в HTML має бути <canvas id="canvas"></canvas>
+// Опційно: підключити dat.GUI, якщо хочеш редагувати параметри в UI.
 
-let scene, camera, renderer, particles, composer, controls;
-let time = 0;
-let isAnimationEnabled = true;
-let currentTheme = 'molten';
-let morphTarget = 0;
-let morphProgress = 0;
+////////////////////////////////////////////////////////////////////////////////
+// Малий Vector клас
+class Vector {
+  constructor(x = 0, y = 0) {
+    this.x = x;
+    this.y = y;
+  }
+  addTo(v) {
+    this.x += v.x;
+    this.y += v.y;
+    return this;
+  }
+  sub(v) {
+    return new Vector(this.x - v.x, this.y - v.y);
+  }
+  div(s) {
+    return new Vector(this.x / s, this.y / s);
+  }
+  mult(s) {
+    this.x *= s; this.y *= s; return this;
+  }
+  getLength() {
+    return Math.sqrt(this.x * this.x + this.y * this.y);
+  }
+  setLength(len) {
+    const ang = Math.atan2(this.y, this.x);
+    this.x = Math.cos(ang) * len;
+    this.y = Math.sin(ang) * len;
+    return this;
+  }
+  setAngle(a) {
+    const len = this.getLength();
+    this.x = Math.cos(a) * len;
+    this.y = Math.sin(a) * len;
+    return this;
+  }
+  set(x, y) {
+    this.x = x; this.y = y; return this;
+  }
+  copy() {
+    return new Vector(this.x, this.y);
+  }
+}
 
-const particleCount = 10000;
+////////////////////////////////////////////////////////////////////////////////
+// noisejs (Joseph Gentle) compact implementation (perlin + simplex 3D functions)
+// Source adapted (public) -> provides noise.seed, noise.perlin3, noise.simplex3
+const noise = (function() {
+  // Permutation table
+  const p = new Uint8Array(512);
+  const permutation = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) permutation[i] = i;
+  // Fisher-Yates shuffle
+  function seed(seed) {
+    let s = seed;
+    if (s > 0 && s < 1) s *= 65536;
+    s = Math.floor(s);
+    if (s < 256) s |= s << 8;
+    for (let i = 255; i > 0; i--) {
+      s = (s * 16807) % 2147483647;
+      const r = (s & 0xffff) / 65536;
+      const j = Math.floor(r * (i + 1));
+      const tmp = permutation[i];
+      permutation[i] = permutation[j];
+      permutation[j] = tmp;
+    }
+    for (let i = 0; i < 512; i++) p[i] = permutation[i & 255];
+  }
 
-const themes = {
-  molten: {
-    name: 'Molten',
-    colors: [
-      new THREE.Color(0xff4800),
-      new THREE.Color(0xff8c00),
-      new THREE.Color(0xd73a00),
-      new THREE.Color(0x3d1005),
-      new THREE.Color(0xffc600)
-    ],
-    bloom: { strength: 0.35, radius: 0.45, threshold: 0.7 }
+  // Classic Perlin 3D
+  function fade(t) {
+    return t * t * t * (t * (t * 6 - 15) + 10);
+  }
+  function lerp(a, b, t) {
+    return (1 - t) * a + t * b;
+  }
+  function grad(hash, x, y, z) {
+    const h = hash & 15;
+    const u = h < 8 ? x : y;
+    const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
+    return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+  }
+  function perlin3(x, y, z) {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    const Z = Math.floor(z) & 255;
+    x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+    const u = fade(x), v = fade(y), w = fade(z);
+    const A = p[X] + Y, AA = p[A] + Z, AB = p[A + 1] + Z;
+    const B = p[X + 1] + Y, BA = p[B] + Z, BB = p[B + 1] + Z;
+
+    return lerp(
+      lerp(
+        lerp(grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z), u),
+        lerp(grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z), u),
+        v
+      ),
+      lerp(
+        lerp(grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1), u),
+        lerp(grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1), u),
+        v
+      ),
+      w
+    );
+  }
+
+  // Simplex noise 3D (fast approximation)
+  // Implementation adapted from public-domain simplex noise variations
+  const F3 = 1 / 3;
+  const G3 = 1 / 6;
+  function simplex3(xin, yin, zin) {
+    let n0, n1, n2, n3;
+    const s = (xin + yin + zin) * F3;
+    const i = Math.floor(xin + s);
+    const j = Math.floor(yin + s);
+    const k = Math.floor(zin + s);
+    const t = (i + j + k) * G3;
+    const X0 = i - t;
+    const Y0 = j - t;
+    const Z0 = k - t;
+    let x0 = xin - X0;
+    let y0 = yin - Y0;
+    let z0 = zin - Z0;
+
+    let i1, j1, k1;
+    let i2, j2, k2;
+    if (x0 >= y0) {
+      if (y0 >= z0) { i1 = 1; j1 = 0; k1 = 0; i2 = 1; j2 = 1; k2 = 0; }
+      else if (x0 >= z0) { i1 = 1; j1 = 0; k1 = 0; i2 = 1; j2 = 0; k2 = 1; }
+      else { i1 = 0; j1 = 0; k1 = 1; i2 = 1; j2 = 0; k2 = 1; }
+    } else {
+      if (y0 < z0) { i1 = 0; j1 = 0; k1 = 1; i2 = 0; j2 = 1; k2 = 1; }
+      else if (x0 < z0) { i1 = 0; j1 = 1; k1 = 0; i2 = 0; j2 = 1; k2 = 1; }
+      else { i1 = 0; j1 = 1; k1 = 0; i2 = 1; j2 = 1; k2 = 0; }
+    }
+
+    const x1 = x0 - i1 + G3;
+    const y1 = y0 - j1 + G3;
+    const z1 = z0 - k1 + G3;
+    const x2 = x0 - i2 + 2 * G3;
+    const y2 = y0 - j2 + 2 * G3;
+    const z2 = z0 - k2 + 2 * G3;
+    const x3 = x0 - 1 + 3 * G3;
+    const y3 = y0 - 1 + 3 * G3;
+    const z3 = z0 - 1 + 3 * G3;
+
+    const ii = i & 255;
+    const jj = j & 255;
+    const kk = k & 255;
+
+    let t0 = 0.6 - x0 * x0 - y0 * y0 - z0 * z0;
+    if (t0 < 0) n0 = 0;
+    else {
+      t0 *= t0;
+      n0 = t0 * t0 * grad(p[ii + p[jj + p[kk]]], x0, y0, z0);
+    }
+    let t1 = 0.6 - x1 * x1 - y1 * y1 - z1 * z1;
+    if (t1 < 0) n1 = 0;
+    else {
+      t1 *= t1;
+      n1 = t1 * t1 * grad(p[ii + i1 + p[jj + j1 + p[kk + k1]]], x1, y1, z1);
+    }
+    let t2 = 0.6 - x2 * x2 - y2 * y2 - z2 * z2;
+    if (t2 < 0) n2 = 0;
+    else {
+      t2 *= t2;
+      n2 = t2 * t2 * grad(p[ii + i2 + p[jj + j2 + p[kk + k2]]], x2, y2, z2);
+    }
+    let t3 = 0.6 - x3 * x3 - y3 * y3 - z3 * z3;
+    if (t3 < 0) n3 = 0;
+    else {
+      t3 *= t3;
+      n3 = t3 * t3 * grad(p[ii + 1 + p[jj + 1 + p[kk + 1]]], x3, y3, z3);
+    }
+    // scale to roughly [-1,1]
+    return 32 * (n0 + n1 + n2 + n3);
+  }
+
+  // default seed
+  seed(Math.random() * 65536);
+  return { seed, perlin3, simplex3 };
+})();
+
+////////////////////////////////////////////////////////////////////////////////
+// Основні параметри (твої значення, адаптовано під ES6)
+let canvas, ctx, field, w, h, fieldSize, columns, rows, noiseZ, particles, hue;
+noiseZ = 0;
+
+let particleCount = 2000;
+let particleSize = 0.9;
+fieldSize = 70;
+let fieldForce = 0.15;
+let noiseSpeed = 0.003;
+let sORp = true;
+let trailLength = 0.15;
+let hueBase = 10;
+let hueRange = 5;
+let maxSpeed = 2.5;
+let enableGUI = true;
+
+let ui = {
+  particleCount,
+  particleSize,
+  fieldSize,
+  fieldForce,
+  noiseSpeed,
+  simplexOrPerlin: sORp,
+  trailLength,
+  maxSpeed,
+  hueBase,
+  hueRange,
+  change() {
+    particleSize = ui.particleSize;
+    fieldSize = ui.fieldSize;
+    fieldForce = ui.fieldForce;
+    noiseSpeed = ui.noiseSpeed;
+    maxSpeed = ui.maxSpeed;
+    hueBase = ui.hueBase;
+    hueRange = ui.hueRange;
+    ui.simplexOrPerlin ? sORp = true : sORp = false;
+    reset(); // перерахувати field
   },
-  cosmic: {
-    name: 'Cosmic',
-    colors: [
-      new THREE.Color(0x6a0dad),
-      new THREE.Color(0x9370db),
-      new THREE.Color(0x4b0082),
-      new THREE.Color(0x8a2be2),
-      new THREE.Color(0xdda0dd)
-    ],
-    bloom: { strength: 0.4, radius: 0.5, threshold: 0.65 }
+  reset() {
+    particleCount = Math.round(ui.particleCount);
+    reset();
   },
-  emerald: {
-    name: 'Emerald',
-    colors: [
-      new THREE.Color(0x00ff7f),
-      new THREE.Color(0x3cb371),
-      new THREE.Color(0x2e8b57),
-      new THREE.Color(0x00fa9a),
-      new THREE.Color(0x98fb98)
-    ],
-    bloom: { strength: 0.3, radius: 0.6, threshold: 0.75 }
+  bgColor() {
+    trailLength = ui.trailLength;
   }
 };
 
-document.addEventListener('DOMContentLoaded', init);
-
-function createStarPath(particleIndex, totalParticles) {
-  const numStarPoints = 5;
-  const outerRadius = 35;
-  const innerRadius = 15;
-  const scale = 1.0;
-  const zDepth = 4;
-
-  const starVertices = [];
-  for (let i = 0; i < numStarPoints; i++) {
-    let angle = (i / numStarPoints) * Math.PI * 2 - Math.PI / 2;
-    starVertices.push(new THREE.Vector2(outerRadius * Math.cos(angle), outerRadius * Math.sin(angle)));
-    angle += Math.PI / numStarPoints;
-    starVertices.push(new THREE.Vector2(innerRadius * Math.cos(angle), innerRadius * Math.sin(angle)));
+try {
+  if (enableGUI && typeof dat !== 'undefined') {
+    const gui = new dat.GUI();
+    const f1 = gui.addFolder("Color");
+    const f2 = gui.addFolder("Particle");
+    const f3 = gui.addFolder("Flowfield");
+    f1.add(ui, "hueBase", 0, 360).onChange(ui.change.bind(ui));
+    f1.add(ui, "hueRange", 0, 40).onChange(ui.change.bind(ui));
+    f2.add(ui, "particleCount", 1000, 10000).step(100).onChange(ui.reset.bind(ui));
+    f2.add(ui, "particleSize", 0.1, 3).onChange(ui.change.bind(ui));
+    f2.add(ui, "trailLength", 0.05, 0.60).onChange(ui.bgColor.bind(ui));
+    f2.add(ui, "maxSpeed", 1.0, 4.0).onChange(ui.change.bind(ui));
+    f3.add(ui, "fieldSize", 10, 150).step(1).onChange(ui.change.bind(ui));
+    f3.add(ui, "fieldForce", 0.05, 1).onChange(ui.change.bind(ui));
+    f3.add(ui, "noiseSpeed", 0.001, 0.005).onChange(ui.change.bind(ui));
+    f3.add(ui, "simplexOrPerlin").onChange(ui.change.bind(ui));
   }
-
-  const numSegments = starVertices.length;
-  const t_path = (particleIndex / totalParticles) * numSegments;
-  const segmentIndex = Math.floor(t_path) % numSegments;
-  const segmentProgress = t_path - Math.floor(t_path);
-
-  const startVertex = starVertices[segmentIndex];
-  const endVertex = starVertices[(segmentIndex + 1) % numSegments];
-
-  const x = THREE.MathUtils.lerp(startVertex.x, endVertex.x, segmentProgress);
-  const y = THREE.MathUtils.lerp(startVertex.y, endVertex.y, segmentProgress);
-  const z = Math.sin((particleIndex / totalParticles) * Math.PI * 4) * (zDepth / 2);
-
-  const jitterStrength = 0.2;
-  return new THREE.Vector3(
-    x * scale + (Math.random() - 0.5) * jitterStrength,
-    y * scale + (Math.random() - 0.5) * jitterStrength,
-    z + (Math.random() - 0.5) * jitterStrength * 0.5
-  );
+} catch (e) {
+  // Якщо dat.GUI не підключений — просто ігноруємо GUI
+  // console.log('dat.GUI не знайдено, GUI пропущено');
 }
 
-function createHeartPath(particleIndex, totalParticles) {
-  const t = (particleIndex / totalParticles) * Math.PI * 2;
-  const scale = 2.2;
-
-  let x = 16 * Math.pow(Math.sin(t), 3);
-  let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
-
-  const finalX = x * scale;
-  const finalY = y * scale;
-  const z = Math.sin(t * 4) * 2;
-
-  const jitterStrength = 0.2;
-  return new THREE.Vector3(
-    finalX + (Math.random() - 0.5) * jitterStrength,
-    finalY + (Math.random() - 0.5) * jitterStrength,
-    z + (Math.random() - 0.5) * jitterStrength * 0.5
-  );
-}
-
-function init() {
-  scene = new THREE.Scene();
-
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1500);
-  camera.position.z = 90;
-
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  document.getElementById('container').appendChild(renderer.domElement);
-
-  createUI();
-
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.04;
-  controls.rotateSpeed = 0.3;
-  controls.minDistance = 30;
-  controls.maxDistance = 300;
-  controls.enablePan = false;
-  controls.autoRotate = false;
-  controls.autoRotateSpeed = 0.15;
-
-  composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-  composer.addPass(bloomPass);
-  composer.addPass(new OutputPass());
-  scene.userData.bloomPass = bloomPass;
-
-  createParticleSystem();
-
-  window.addEventListener('resize', onWindowResize);
-
-  setTheme(currentTheme);
-  animate();
-}
-
-function createUI() {
-  const controlsDiv = document.getElementById('controls');
-  controlsDiv.innerHTML = '';
-
-  const themeSelector = document.createElement('div');
-  themeSelector.id = 'theme-selector';
-  Object.keys(themes).forEach((themeKey) => {
-    const button = document.createElement('button');
-    button.className = 'theme-btn';
-    button.dataset.theme = themeKey;
-    button.textContent = themes[themeKey].name;
-    button.addEventListener('click', () => setTheme(themeKey));
-    themeSelector.appendChild(button);
-  });
-  controlsDiv.appendChild(themeSelector);
-
-  const separator1 = document.createElement('div');
-  separator1.className = 'separator';
-  controlsDiv.appendChild(separator1);
-
-  const actionSelector = document.createElement('div');
-  actionSelector.id = 'action-selector';
-
-  const morphBtn = document.createElement('button');
-  morphBtn.className = 'action-btn';
-  morphBtn.textContent = 'Morph';
-  morphBtn.addEventListener('click', () => {
-    morphBtn.classList.toggle('active');
-    morphTarget = morphTarget === 0 ? 1 : 0;
-  });
-  actionSelector.appendChild(morphBtn);
-  controlsDiv.appendChild(actionSelector);
-
-  const separator2 = document.createElement('div');
-  separator2.className = 'separator';
-  controlsDiv.appendChild(separator2);
-
-  const toggleOption = document.createElement('div');
-  toggleOption.className = 'toggle-option';
-
-  const toggleLabel = document.createElement('label');
-  toggleLabel.className = 'toggle-switch';
-
-  const toggleInput = document.createElement('input');
-  toggleInput.type = 'checkbox';
-  toggleInput.id = 'animateToggle';
-  toggleInput.checked = true;
-  toggleInput.addEventListener('change', (e) => {
-    isAnimationEnabled = e.target.checked;
-  });
-
-  const toggleSlider = document.createElement('span');
-  toggleSlider.className = 'toggle-slider';
-
-  toggleLabel.appendChild(toggleInput);
-  toggleLabel.appendChild(toggleSlider);
-
-  const labelForToggle = document.createElement('label');
-  labelForToggle.htmlFor = 'animateToggle';
-  labelForToggle.textContent = 'Animate';
-
-  toggleOption.appendChild(toggleLabel);
-  toggleOption.appendChild(labelForToggle);
-  controlsDiv.appendChild(toggleOption);
-}
-
-function createParticleSystem() {
-  const geometry = new THREE.BufferGeometry();
-
-  const positions = new Float32Array(particleCount * 3);
-  const colors = new Float32Array(particleCount * 3);
-  const sizes = new Float32Array(particleCount);
-
-  const starPositions = new Float32Array(particleCount * 3);
-  const heartPositions = new Float32Array(particleCount * 3);
-  const disintegrationOffsets = new Float32Array(particleCount * 3);
-
-  for (let i = 0; i < particleCount; i++) {
-    const i3 = i * 3;
-
-    const starPos = createStarPath(i, particleCount);
-    const heartPos = createHeartPath(i, particleCount);
-
-    positions[i3] = starPos.x;
-    positions[i3 + 1] = starPos.y;
-    positions[i3 + 2] = starPos.z;
-
-    starPositions[i3] = starPos.x;
-    starPositions[i3 + 1] = starPos.y;
-    starPositions[i3 + 2] = starPos.z;
-
-    heartPositions[i3] = heartPos.x;
-    heartPositions[i3 + 1] = heartPos.y;
-    heartPositions[i3 + 2] = heartPos.z;
-
-    const { color, size } = getAttributesForParticle(i);
-    colors[i3] = color.r;
-    colors[i3 + 1] = color.g;
-    colors[i3 + 2] = color.b;
-    sizes[i] = size;
-
-    const offsetStrength = 30 + Math.random() * 40;
-    const phi = Math.random() * Math.PI * 2;
-    const theta = Math.acos(2 * Math.random() - 1);
-
-    disintegrationOffsets[i3] = Math.sin(theta) * Math.cos(phi) * offsetStrength;
-    disintegrationOffsets[i3 + 1] = Math.sin(theta) * Math.sin(phi) * offsetStrength;
-    disintegrationOffsets[i3 + 2] = Math.cos(theta) * offsetStrength * 0.5;
+class Particle {
+  constructor(x, y) {
+    this.pos = new Vector(x, y);
+    this.vel = new Vector(Math.random() - 0.5, Math.random() - 0.5);
+    this.acc = new Vector(0, 0);
+    this.hue = Math.random() * 30 - 15;
   }
-
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-  geometry.setAttribute('starPosition', new THREE.BufferAttribute(starPositions, 3));
-  geometry.setAttribute('heartPosition', new THREE.BufferAttribute(heartPositions, 3));
-  geometry.setAttribute('disintegrationOffset', new THREE.BufferAttribute(disintegrationOffsets, 3));
-
-  const texture = createParticleTexture();
-  const material = new THREE.PointsMaterial({
-    size: 2.8,
-    map: texture,
-    vertexColors: true,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    sizeAttenuation: true,
-    alphaTest: 0.01
-  });
-
-  particles = new THREE.Points(geometry, material);
-  scene.add(particles);
-}
-
-function getAttributesForParticle(i) {
-  const t = i / particleCount;
-  const colorPalette = themes[currentTheme].colors;
-
-  const colorProgress = (t * colorPalette.length * 1.5 + time * 0.05) % colorPalette.length;
-  const colorIndex1 = Math.floor(colorProgress);
-  const colorIndex2 = (colorIndex1 + 1) % colorPalette.length;
-  const blendFactor = colorProgress - colorIndex1;
-
-  const color1 = colorPalette[colorIndex1];
-  const color2 = colorPalette[colorIndex2];
-  const baseColor = new THREE.Color().lerpColors(color1, color2, blendFactor);
-
-  const color = baseColor.clone().multiplyScalar(0.65 + Math.random() * 0.55);
-  const size = 0.65 + Math.random() * 0.6;
-
-  return { color, size };
-}
-
-function createParticleTexture() {
-  const canvas = document.createElement('canvas');
-  const size = 64;
-  canvas.width = size;
-  canvas.height = size;
-  const context = canvas.getContext('2d');
-
-  const centerX = size / 2;
-  const centerY = size / 2;
-  const outerRadius = size * 0.45;
-  const innerRadius = size * 0.2;
-  const numPoints = 5;
-
-  context.beginPath();
-  context.moveTo(centerX, centerY - outerRadius);
-  for (let i = 0; i < numPoints; i++) {
-    const outerAngle = (i / numPoints) * Math.PI * 2 - Math.PI / 2;
-    context.lineTo(centerX + outerRadius * Math.cos(outerAngle), centerY + outerRadius * Math.sin(outerAngle));
-    const innerAngle = outerAngle + Math.PI / numPoints;
-    context.lineTo(centerX + innerRadius * Math.cos(innerAngle), centerY + innerRadius * Math.sin(innerAngle));
-  }
-  context.closePath();
-
-  const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, outerRadius);
-  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-  gradient.addColorStop(0.3, 'rgba(255, 255, 220, 0.9)');
-  gradient.addColorStop(0.6, 'rgba(255, 200, 150, 0.6)');
-  gradient.addColorStop(1, 'rgba(255, 150, 0, 0)');
-
-  context.fillStyle = gradient;
-  context.fill();
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.needsUpdate = true;
-  return texture;
-}
-
-function animateParticles() {
-  if (!particles || !isAnimationEnabled) return;
-
-  const positions = particles.geometry.attributes.position.array;
-  const starPositions = particles.geometry.attributes.starPosition.array;
-  const heartPositions = particles.geometry.attributes.heartPosition.array;
-  const particleColors = particles.geometry.attributes.color.array;
-  const particleSizes = particles.geometry.attributes.size.array;
-  const disintegrationOffsets = particles.geometry.attributes.disintegrationOffset.array;
-
-  morphProgress += (morphTarget - morphProgress) * 0.04;
-
-  for (let i = 0; i < particleCount; i++) {
-    const i3 = i * 3;
-    const iSize = i;
-
-    const homeX = THREE.MathUtils.lerp(starPositions[i3], heartPositions[i3], morphProgress);
-    const homeY = THREE.MathUtils.lerp(starPositions[i3 + 1], heartPositions[i3 + 1], morphProgress);
-    const homeZ = THREE.MathUtils.lerp(starPositions[i3 + 2], heartPositions[i3 + 2], morphProgress);
-
-    const disintegrationCycleTime = 20.0;
-    const particleCycleOffset = (i / particleCount) * disintegrationCycleTime * 0.5;
-    const cycleProgress = ((time * 0.6 + particleCycleOffset) % disintegrationCycleTime) / disintegrationCycleTime;
-
-    let disintegrationAmount = 0;
-    const stablePhaseEnd = 0.5;
-    const disintegrateStartPhase = stablePhaseEnd;
-    const disintegrateFullPhase = stablePhaseEnd + 0.15;
-    const holdPhaseEnd = disintegrateFullPhase + 0.1;
-
-    if (cycleProgress < stablePhaseEnd) {
-      disintegrationAmount = 0;
-    } else if (cycleProgress < disintegrateFullPhase) {
-      disintegrationAmount = (cycleProgress - disintegrateStartPhase) / (disintegrateFullPhase - disintegrateStartPhase);
-    } else if (cycleProgress < holdPhaseEnd) {
-      disintegrationAmount = 1.0;
-    } else {
-      disintegrationAmount = 1.0 - (cycleProgress - holdPhaseEnd) / (1.0 - holdPhaseEnd);
+  move(acc) {
+    if (acc) {
+      this.acc.addTo(acc);
     }
-
-    disintegrationAmount = Math.sin(disintegrationAmount * Math.PI * 0.5);
-
-    let currentTargetX = homeX;
-    let currentTargetY = homeY;
-    let currentTargetZ = homeZ;
-    let currentLerpFactor = 0.085;
-
-    if (disintegrationAmount > 0.001) {
-      currentTargetX = homeX + disintegrationOffsets[i3] * disintegrationAmount;
-      currentTargetY = homeY + disintegrationOffsets[i3 + 1] * disintegrationAmount;
-      currentTargetZ = homeZ + disintegrationOffsets[i3 + 2] * disintegrationAmount;
-      currentLerpFactor = 0.045 + disintegrationAmount * 0.02;
+    this.vel.addTo(this.acc);
+    this.pos.addTo(this.vel);
+    if (this.vel.getLength() > maxSpeed) {
+      this.vel.setLength(maxSpeed);
     }
-
-    positions[i3] += (currentTargetX - positions[i3]) * currentLerpFactor;
-    positions[i3 + 1] += (currentTargetY - positions[i3 + 1]) * currentLerpFactor;
-    positions[i3 + 2] += (currentTargetZ - positions[i3 + 2]) * currentLerpFactor;
-
-    const { color: baseParticleColor, size: baseParticleSize } = getAttributesForParticle(i);
-
-    let brightnessFactor =
-      (0.65 + Math.sin((i / particleCount) * Math.PI * 7 + time * 1.3) * 0.35) * (1 - disintegrationAmount * 0.75);
-    brightnessFactor *= 0.85 + Math.sin(time * 7 + i * 0.5) * 0.15;
-
-    particleColors[i3] = baseParticleColor.r * brightnessFactor;
-    particleColors[i3 + 1] = baseParticleColor.g * brightnessFactor;
-    particleColors[i3 + 2] = baseParticleColor.b * brightnessFactor;
-
-    let currentSize = baseParticleSize * (1 - disintegrationAmount * 0.9);
-    currentSize *= 0.8 + Math.sin(time * 5 + i * 0.3) * 0.2;
-    particleSizes[iSize] = Math.max(0.05, currentSize);
+    this.acc.setLength(0);
   }
-
-  particles.geometry.attributes.position.needsUpdate = true;
-  particles.geometry.attributes.color.needsUpdate = true;
-  particles.geometry.attributes.size.needsUpdate = true;
-}
-
-function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  composer.setSize(window.innerWidth, window.innerHeight);
-}
-
-function setTheme(themeName) {
-  if (!themes[themeName]) return;
-  currentTheme = themeName;
-
-  document.body.className = `theme-${currentTheme}`;
-  document.querySelectorAll('.theme-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.theme === themeName);
-  });
-
-  const theme = themes[currentTheme];
-  const bloomPass = scene.userData.bloomPass;
-  if (bloomPass) {
-    bloomPass.strength = theme.bloom.strength;
-    bloomPass.radius = theme.bloom.radius;
-    bloomPass.threshold = theme.bloom.threshold;
+  wrap() {
+    if (this.pos.x > w) {
+      this.pos.x = 0;
+    } else if (this.pos.x < -fieldSize) {
+      this.pos.x = w - 1;
+    }
+    if (this.pos.y > h) {
+      this.pos.y = 0;
+    } else if (this.pos.y < -fieldSize) {
+      this.pos.y = h - 1;
+    }
   }
-
-  updateParticleColorsAndSizes();
 }
 
-function updateParticleColorsAndSizes() {
-  if (!particles) return;
+canvas = document.querySelector("#canvas");
+if (!canvas) {
+  // якщо canvas немає — створимо і додамо в body
+  canvas = document.createElement('canvas');
+  canvas.id = 'canvas';
+  document.body.appendChild(canvas);
+}
+ctx = canvas.getContext("2d");
 
-  const pColors = particles.geometry.attributes.color.array;
-  const pSizes = particles.geometry.attributes.size.array;
+window.addEventListener("resize", reset);
 
-  for (let i = 0; i < particleCount; i++) {
-    const { color, size } = getAttributesForParticle(i);
-    pColors[i * 3] = color.r;
-    pColors[i * 3 + 1] = color.g;
-    pColors[i * 3 + 2] = color.b;
-    pSizes[i] = size;
+function initParticles() {
+  particles = [];
+  let numberOfParticles = particleCount;
+  for (let i = 0; i < numberOfParticles; i++) {
+    let particle = new Particle(Math.random() * w, Math.random() * h);
+    particles.push(particle);
   }
-
-  particles.geometry.attributes.color.needsUpdate = true;
-  particles.geometry.attributes.size.needsUpdate = true;
 }
 
-function animate() {
-  requestAnimationFrame(animate);
-  time += 0.02;
-  controls.update();
-
-  if (isAnimationEnabled) {
-    animateParticles();
+function initField() {
+  field = new Array(columns);
+  for (let x = 0; x < columns; x++) {
+    field[x] = new Array(rows);
+    for (let y = 0; y < rows; y++) {
+      field[x][y] = new Vector(0, 0);
+    }
   }
-
-  composer.render();
 }
+
+function calcField() {
+  if (sORp) {
+    for (let x = 0; x < columns; x++) {
+      for (let y = 0; y < rows; y++) {
+        const angle = noise.simplex3(x / 20, y / 20, noiseZ) * Math.PI * 2;
+        const length = noise.simplex3(x / 40 + 40000, y / 40 + 40000, noiseZ) * fieldForce;
+        field[x][y].setLength(Math.abs(length)); // length може бути від'ємним — робимо абсолютне
+        field[x][y].setAngle(angle);
+      }
+    }
+  } else {
+    for (let x = 0; x < columns; x++) {
+      for (let y = 0; y < rows; y++) {
+        const angle = noise.perlin3(x / 20, y / 20, noiseZ) * Math.PI * 2;
+        const length = noise.perlin3(x / 40 + 40000, y / 40 + 40000, noiseZ) * fieldForce;
+        field[x][y].setLength(Math.abs(length));
+        field[x][y].setAngle(angle);
+      }
+    }
+  }
+}
+
+function reset() {
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+  noise.seed(Math.random());
+  columns = Math.round(w / fieldSize) + 1;
+  rows = Math.round(h / fieldSize) + 1;
+  initParticles();
+  initField();
+}
+
+function draw() {
+  requestAnimationFrame(draw);
+  calcField();
+  noiseZ += noiseSpeed;
+  drawBackground();
+  drawParticles();
+}
+
+function drawBackground() {
+  // Прозорий чорний фон для сліду
+  ctx.fillStyle = "rgba(0,0,0," + trailLength + ")";
+  ctx.fillRect(0, 0, w, h);
+}
+
+function drawParticles() {
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const ps = Math.abs(p.vel.x + p.vel.y) * particleSize + 0.3;
+    const hue = (hueBase + p.hue + ((p.vel.x + p.vel.y) * hueRange));
+    ctx.fillStyle = "hsl(" + hue + ", 100%, 50%)";
+    ctx.fillRect(p.pos.x, p.pos.y, ps, ps);
+
+    let pos = p.pos.div(fieldSize);
+    let v;
+    if (pos.x >= 0 && pos.x < columns && pos.y >= 0 && pos.y < rows) {
+      v = field[Math.floor(pos.x)][Math.floor(pos.y)];
+    }
+    p.move(v);
+    p.wrap();
+  }
+}
+
+// Запуск
+reset();
+draw();
