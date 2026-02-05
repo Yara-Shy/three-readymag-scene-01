@@ -1,14 +1,9 @@
-// Flowfield particle animation with mouse interaction added.
-// (Updated to respond to pointer movement and pointer down for stronger local influence)
-
-////////////////////////////////////////////////////////////////////////////////
-// Vector, noise and core code preserved/adapted from previous version
+// Flowfield particle animation — repulsion on hover (pointer hover) implementation.
+// Частинки відштовхуються від курсора коли курсор всередині canvas (hover).
+// Pointerdown посилює ефект (опційно).
 
 class Vector {
-  constructor(x = 0, y = 0) {
-    this.x = x;
-    this.y = y;
-  }
+  constructor(x = 0, y = 0) { this.x = x; this.y = y; }
   addTo(v) { if (!v) return this; this.x += v.x; this.y += v.y; return this; }
   div(s) { return new Vector(this.x / s, this.y / s); }
   mult(s) { this.x *= s; this.y *= s; return this; }
@@ -18,8 +13,7 @@ class Vector {
     this.x = (this.x / l) * len; this.y = (this.y / l) * len; return this;
   }
   setAngle(a) {
-    const len = this.getLength();
-    this.x = Math.cos(a) * len; this.y = Math.sin(a) * len; return this;
+    const len = this.getLength(); this.x = Math.cos(a) * len; this.y = Math.sin(a) * len; return this;
   }
   set(x, y) { this.x = x; this.y = y; return this; }
   copy() { return new Vector(this.x, this.y); }
@@ -47,36 +41,34 @@ const noise = (function() {
   function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
   function lerp(a, b, t) { return a + t * (b - a); }
   function grad(hash, x, y, z) {
-    const h = hash & 15;
-    const u = h < 8 ? x : y;
+    const h = hash & 15; const u = h < 8 ? x : y;
     const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
     return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
   }
   function perlin3(x, y, z) {
-    const X = Math.floor(x) & 255;
-    const Y = Math.floor(y) & 255;
-    const Z = Math.floor(z) & 255;
+    const X = Math.floor(x) & 255; const Y = Math.floor(y) & 255; const Z = Math.floor(z) & 255;
     x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
     const u = fade(x), v = fade(y), w = fade(z);
     const A = p[X] + Y, AA = p[A] + Z, AB = p[A + 1] + Z;
     const B = p[X + 1] + Y, BA = p[B] + Z, BB = p[B + 1] + Z;
     return lerp(
-      lerp(lerp(grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z), u),
-           lerp(grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z), u), v),
-      lerp(lerp(grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1), u),
-           lerp(grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1), u), v),
+      lerp(
+        lerp(grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z), u),
+        lerp(grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z), u), v
+      ),
+      lerp(
+        lerp(grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1), u),
+        lerp(grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1), u), v
+      ),
       w
     );
   }
-  // Simplex3 alias (we use perlin3 for both for compatibility)
   function simplex3(x,y,z){ return perlin3(x,y,z); }
-
   seed(Math.random() * 65536);
   return { seed, perlin3, simplex3 };
 })();
 
-////////////////////////////////////////////////////////////////////////////////
-// Parameters (from your snippet, adapted)
+// Parameters
 let canvas, ctx, field, w, h, fieldSize, columns, rows, noiseZ, particles, hue;
 noiseZ = 0;
 
@@ -92,37 +84,22 @@ let hueRange = 5;
 let maxSpeed = 2.5;
 let enableGUI = true;
 
+// Mouse / hover interaction
+const mouse = { x: 0, y: 0, vx: 0, vy: 0, down: false, hover: false };
+const mouseInfluenceRadius = 200; // px
+const mouseInfluenceStrength = 0.55; // base strength
+
 const ui = {
-  particleCount,
-  particleSize,
-  fieldSize,
-  fieldForce,
-  noiseSpeed,
-  simplexOrPerlin: sORp,
-  trailLength,
-  maxSpeed,
-  hueBase,
-  hueRange,
+  particleCount, particleSize, fieldSize, fieldForce, noiseSpeed,
+  simplexOrPerlin: sORp, trailLength, maxSpeed, hueBase, hueRange,
   change() {
-    particleSize = ui.particleSize;
-    fieldSize = ui.fieldSize;
-    fieldForce = ui.fieldForce;
-    noiseSpeed = ui.noiseSpeed;
-    maxSpeed = ui.maxSpeed;
-    hueBase = ui.hueBase;
-    hueRange = ui.hueRange;
+    particleSize = ui.particleSize; fieldSize = ui.fieldSize; fieldForce = ui.fieldForce;
+    noiseSpeed = ui.noiseSpeed; maxSpeed = ui.maxSpeed; hueBase = ui.hueBase; hueRange = ui.hueRange;
     sORp = !!ui.simplexOrPerlin;
-    columns = Math.round(w / fieldSize) + 1;
-    rows = Math.round(h / fieldSize) + 1;
-    initField();
+    columns = Math.round(w / fieldSize) + 1; rows = Math.round(h / fieldSize) + 1; initField();
   },
-  reset() {
-    particleCount = Math.round(ui.particleCount);
-    reset();
-  },
-  bgColor() {
-    trailLength = ui.trailLength;
-  }
+  reset() { particleCount = Math.round(ui.particleCount); reset(); },
+  bgColor() { trailLength = ui.trailLength; }
 };
 
 try {
@@ -144,14 +121,6 @@ try {
   }
 } catch (e) { /* ignore if dat.GUI missing */ }
 
-////////////////////////////////////////////////////////////////////////////////
-// Mouse / pointer interaction
-const mouse = { x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, down: false };
-const mouseInfluenceRadius = 200; // px
-const mouseInfluenceStrength = 0.55; // addable acceleration strength
-
-////////////////////////////////////////////////////////////////////////////////
-// Particle class
 class Particle {
   constructor(x, y) {
     this.pos = new Vector(x, y);
@@ -174,8 +143,6 @@ class Particle {
   }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Canvas and setup
 function ensureCanvas() {
   canvas = document.querySelector("#canvas");
   if (!canvas) {
@@ -188,14 +155,17 @@ function ensureCanvas() {
 }
 ensureCanvas();
 
+// Pointer listeners: track position and hover state
 canvas.addEventListener('pointermove', (e) => {
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
-  mouse.vx = x - mouse.x;
-  mouse.vy = y - mouse.y;
+  mouse.vx = x - mouse.x; mouse.vy = y - mouse.y;
   mouse.x = x; mouse.y = y;
 });
+canvas.addEventListener('pointerenter', () => { mouse.hover = true; });
+canvas.addEventListener('pointerleave', () => { mouse.hover = false; });
+// pointerdown still available to amplify effect if desired
 canvas.addEventListener('pointerdown', () => { mouse.down = true; });
 window.addEventListener('pointerup', () => { mouse.down = false; });
 
@@ -203,18 +173,14 @@ window.addEventListener("resize", reset);
 
 function initParticles() {
   particles = [];
-  for (let i = 0; i < particleCount; i++) {
-    particles.push(new Particle(Math.random() * w, Math.random() * h));
-  }
+  for (let i = 0; i < particleCount; i++) particles.push(new Particle(Math.random() * w, Math.random() * h));
 }
 
 function initField() {
   field = new Array(columns);
   for (let x = 0; x < columns; x++) {
     field[x] = new Array(rows);
-    for (let y = 0; y < rows; y++) {
-      field[x][y] = new Vector(0, 0);
-    }
+    for (let y = 0; y < rows; y++) field[x][y] = new Vector(0, 0);
   }
 }
 
@@ -224,8 +190,7 @@ function calcField() {
       for (let y = 0; y < rows; y++) {
         const angle = noise.simplex3(x / 20, y / 20, noiseZ) * Math.PI * 2;
         const length = noise.simplex3(x / 40 + 40000, y / 40 + 40000, noiseZ) * fieldForce;
-        field[x][y].setLength(Math.abs(length));
-        field[x][y].setAngle(angle);
+        field[x][y].setLength(Math.abs(length)); field[x][y].setAngle(angle);
       }
     }
   } else {
@@ -233,8 +198,7 @@ function calcField() {
       for (let y = 0; y < rows; y++) {
         const angle = noise.perlin3(x / 20, y / 20, noiseZ) * Math.PI * 2;
         const length = noise.perlin3(x / 40 + 40000, y / 40 + 40000, noiseZ) * fieldForce;
-        field[x][y].setLength(Math.abs(length));
-        field[x][y].setAngle(angle);
+        field[x][y].setLength(Math.abs(length)); field[x][y].setAngle(angle);
       }
     }
   }
@@ -243,23 +207,19 @@ function calcField() {
 function reset() {
   w = canvas.width = window.innerWidth;
   h = canvas.height = window.innerHeight;
-  mouse.x = w / 2; mouse.y = h / 2; mouse.px = mouse.x; mouse.py = mouse.y;
+  mouse.x = w / 2; mouse.y = h / 2; mouse.vx = mouse.vy = 0;
   noise.seed(Math.random());
-  columns = Math.round(w / fieldSize) + 1;
-  rows = Math.round(h / fieldSize) + 1;
-  initParticles();
-  initField();
+  columns = Math.round(w / fieldSize) + 1; rows = Math.round(h / fieldSize) + 1;
+  initParticles(); initField();
 }
 
 function draw() {
   requestAnimationFrame(draw);
   calcField();
-  // noiseZ is slightly influenced by mouse horizontal movement (creates local turbulence)
+  // subtle noiseZ modulation by mouse horizontal movement
   noiseZ += noiseSpeed + (mouse.vx * 0.00025);
-  // fade mouse velocity so influence decays
   mouse.vx *= 0.85; mouse.vy *= 0.85;
-  drawBackground();
-  drawParticles();
+  drawBackground(); drawParticles();
 }
 
 function drawBackground() {
@@ -277,28 +237,28 @@ function drawParticles() {
 
     let pos = p.pos.div(fieldSize);
     let v;
-    if (pos.x >= 0 && pos.x < columns && pos.y >= 0 && pos.y < rows) {
-      v = field[Math.floor(pos.x)][Math.floor(pos.y)];
-    }
-    // Build acceleration: field vector + mouse-based influence
+    if (pos.x >= 0 && pos.x < columns && pos.y >= 0 && pos.y < rows) v = field[Math.floor(pos.x)][Math.floor(pos.y)];
+
+    // base acceleration from field
     const acc = v ? v.copy() : new Vector(0, 0);
 
-    // Add a small swirl from mouse movement (global)
+    // small global swirl from mouse motion
     acc.addTo(new Vector(mouse.vx * 0.02, mouse.vy * 0.02));
 
-    // Local attractor/repeller around pointer
-    const dx = mouse.x - p.pos.x;
-    const dy = mouse.y - p.pos.y;
-    const distSq = dx * dx + dy * dy;
-    const r = mouseInfluenceRadius;
-    if (distSq < r * r) {
-      const dist = Math.sqrt(distSq) || 0.0001;
-      // normalized direction from particle to mouse
-      const dir = new Vector(dx / dist, dy / dist);
-      // strength decreases with distance, increases if pointer held
-      const strength = mouseInfluenceStrength * (1 - dist / r) * (mouse.down ? 2.0 : 1.0);
-      dir.setLength(strength);
-      acc.addTo(dir);
+    // Repel on hover: if mouse.hover true and particle within radius -> push away
+    if (mouse.hover) {
+      const dx = p.pos.x - mouse.x; // particle minus mouse => away vector
+      const dy = p.pos.y - mouse.y;
+      const distSq = dx * dx + dy * dy;
+      const r = mouseInfluenceRadius;
+      if (distSq < r * r) {
+        const dist = Math.sqrt(distSq) || 0.0001;
+        const dir = new Vector(dx / dist, dy / dist); // normalized away direction
+        // strength decreases with distance, pointerdown amplifies
+        const strength = mouseInfluenceStrength * (1 - dist / r) * (mouse.down ? 2.0 : 1.0);
+        dir.setLength(strength);
+        acc.addTo(dir);
+      }
     }
 
     p.move(acc);
