@@ -65,6 +65,21 @@
     const explosionDuration = 2000; 
 
     const themes = {
+        nebula: {
+            sphere: [new THREE.Color(0x00ffff), new THREE.Color(0xff1493), new THREE.Color(0x4169e1), new THREE.Color(0xff69b4), new THREE.Color(0x00bfff)],
+            rings: (i, count, j, pCount) => new THREE.Color().setHSL((i / count) * 0.6 + (j / pCount) * 0.2 + 0.5, 0.8, 0.6),
+            hdr: 'https://www.spacespheremaps.com/wp-content/uploads/HDR_blue_nebulae-1.hdr'
+        },
+        sunset: {
+            sphere: [new THREE.Color(0xff4500), new THREE.Color(0xff8c00), new THREE.Color(0xffd700), new THREE.Color(0xff0080), new THREE.Color(0xda70d6)],
+            rings: (i, count, j, pCount) => new THREE.Color().setHSL((i / count) * 0.1 + (j / pCount) * 0.1 + 0.0, 0.9, 0.7),
+            hdr: 'https://www.spacespheremaps.com/wp-content/uploads/HDR_silver_and_gold_nebulae.hdr'
+        },
+        forest: {
+            sphere: [new THREE.Color(0x228b22), new THREE.Color(0x00ff7f), new THREE.Color(0x3cb371), new THREE.Color(0x1e90ff), new THREE.Color(0x87cefa)],
+            rings: (i, count, j, pCount) => new THREE.Color().setHSL((i / count) * 0.2 + (j / pCount) * 0.1 + 0.25, 0.8, 0.55),
+            hdr: 'https://www.spacespheremaps.com/wp-content/uploads/HDR_subdued_multi_nebulae.hdr'
+        },
             aurora: {
             sphere: [new THREE.Color(0x00ff7f), new THREE.Color(0x40e0d0), new THREE.Color(0x483d8b), new THREE.Color(0x9932cc), new THREE.Color(0x00fa9a)],
             rings: (i, count, j, pCount) => new THREE.Color().setHSL((i / count) * 0.3 + (j / pCount) * 0.1 + 0.45, 0.9, 0.65),
