@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Scroll Shape</title>
+  <title>Scroll Fullscreen Rectangle</title>
 
   <style>
     body {
@@ -13,39 +13,45 @@
       font-family: sans-serif;
     }
 
-    .intro-shape {
+    /* чорний прямокутник */
+    .scroll-rect {
       position: fixed;
-      top: 50%;
-      left: 50%;
-      width: 220px;
-      height: 220px;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
       background: black;
-      border-radius: 50%;
-      transform: translate(-50%, -50%) scale(0);
-      transition: transform 0.8s cubic-bezier(0.7,0,0.3,1);
+
+      /* початково схований зверху */
+      transform: scaleY(0);
+      transform-origin: top;
+      transition: transform 0.9s cubic-bezier(0.7, 0, 0.3, 1);
+
       z-index: 9999;
+      pointer-events: none;
     }
 
-    .intro-shape.visible {
-      transform: translate(-50%, -50%) scale(1);
+    /* коли активний */
+    .scroll-rect.visible {
+      transform: scaleY(1);
     }
   </style>
 </head>
 
 <body>
 
-  <div class="intro-shape"></div>
+  <div class="scroll-rect"></div>
 
   <script>
-    const shape = document.querySelector(".intro-shape");
+    const rect = document.querySelector(".scroll-rect");
 
     window.addEventListener("scroll", () => {
-      const scrollY = window.scrollY;
+      const triggerPoint = 200; // px скролу
 
-      if (scrollY > 150) {   // коли проскролили 150px
-        shape.classList.add("visible");
+      if (window.scrollY > triggerPoint) {
+        rect.classList.add("visible");
       } else {
-        shape.classList.remove("visible");
+        rect.classList.remove("visible");
       }
     });
   </script>
