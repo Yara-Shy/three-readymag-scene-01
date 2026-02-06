@@ -1,10 +1,8 @@
-const split = document.querySelector(".split");
+const split = document.querySelector(".split"); // елемент прямокутника
 
 window.addEventListener("message", (event) => {
   if (!event.data.scrollProgress) return;
 
   const progress = event.data.scrollProgress;
-  const maxHeight = window.innerHeight;
-
-  split.style.height = progress * maxHeight + "px";
+  split.style.height = progress * window.innerHeight + "px";
 });
