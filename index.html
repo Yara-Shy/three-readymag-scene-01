@@ -16,52 +16,7 @@
         display: block;
     }
     
-    .control-btn {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        cursor: pointer;
-        border: 2px solid rgba(255, 255, 255, 0.3);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        color: #fff;
-        transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.3s ease;
-    }
-    .control-btn:hover {
-        transform: scale(1.15);
-        box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
-    }
-    #fullscreen-btn {
-        background: linear-gradient(45deg, #ffffff, #cccccc);
-        color: #000;
-        font-size: 12px;
-        font-weight: bold;
-    }
-    #explode-btn {
-         background: linear-gradient(45deg, #ff8c00, #ff0080);
-    }
-    #explode-btn.active {
-        box-shadow: 0 0 20px #ff6347;
-        transform: scale(1.15);
-        pointer-events: none; 
-        background: linear-gradient(45deg, #ff4500, #d30061);
-    }
-    #theme-selector::before {
-        content: '';
-        position: absolute;
-        top: -5px;
-        left: -5px;
-        right: -5px;
-        bottom: -5px;
-        z-index: -1;
-        background: linear-gradient(45deg, #00ffff, #ff1493, #4169e1, #ff69b4, #00bfff, #00ffff);
-        background-size: 400% 400%;
-        animation: gradientBorder 15s ease infinite;
-        border-radius: 25px;
-        filter: blur(8px);
-        opacity: 0.7;
-    }
+   
     @keyframes gradientBorder {
         0% { background-position: 0% 50%; }
         50% { background-position: 100% 50%; }
