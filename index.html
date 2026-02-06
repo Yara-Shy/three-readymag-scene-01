@@ -3,30 +3,31 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Intro Shape</title>
+  <title>Scroll Shape</title>
 
   <style>
-    /* білий фон сторінки */
     body {
       margin: 0;
+      height: 300vh; /* щоб був скрол */
       background: white;
-      height: 200vh; /* просто щоб був скрол */
       font-family: sans-serif;
     }
 
-    /* чорна фігура по центру */
     .intro-shape {
       position: fixed;
       top: 50%;
       left: 50%;
-      width: 200px;
-      height: 200px;
+      width: 220px;
+      height: 220px;
       background: black;
       border-radius: 50%;
-
-      /* початковий стан */
       transform: translate(-50%, -50%) scale(0);
+      transition: transform 0.8s cubic-bezier(0.7,0,0.3,1);
       z-index: 9999;
+    }
+
+    .intro-shape.visible {
+      transform: translate(-50%, -50%) scale(1);
     }
   </style>
 </head>
@@ -36,4 +37,18 @@
   <div class="intro-shape"></div>
 
   <script>
-    // запускає
+    const shape = document.querySelector(".intro-shape");
+
+    window.addEventListener("scroll", () => {
+      const scrollY = window.scrollY;
+
+      if (scrollY > 150) {   // коли проскролили 150px
+        shape.classList.add("visible");
+      } else {
+        shape.classList.remove("visible");
+      }
+    });
+  </script>
+
+</body>
+</html>
