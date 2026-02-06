@@ -1,6 +1,5 @@
 const split = document.querySelector(".split");
 
-// приймаємо повідомлення
 window.addEventListener("message", (event) => {
   if (!event.data.scrollProgress) return;
 
@@ -9,4 +8,3 @@ window.addEventListener("message", (event) => {
 
   split.style.height = progress * maxHeight + "px";
 });
-
