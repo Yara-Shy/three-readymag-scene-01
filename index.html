@@ -2,57 +2,47 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Scroll Fullscreen Rectangle</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Center Expanding Rectangle</title>
 
   <style>
     body {
       margin: 0;
       height: 300vh; /* щоб був скрол */
       background: white;
-      font-family: sans-serif;
     }
 
-    /* чорний прямокутник */
-    .scroll-rect {
+    /* прямокутник */
+    .center-rect {
       position: fixed;
-      top: 0;
       left: 0;
+      top: 50%;
+
       width: 100vw;
-      height: 100vh;
+      height: 0;
+
       background: black;
 
-      /* початково схований зверху */
-      transform: scaleY(0);
-      transform-origin: top;
-      transition: transform 0.9s cubic-bezier(0.7, 0, 0.3, 1);
-
+      transform: translateY(-50%);
       z-index: 9999;
       pointer-events: none;
-    }
-
-    /* коли активний */
-    .scroll-rect.visible {
-      transform: scaleY(1);
     }
   </style>
 </head>
 
 <body>
 
-  <div class="scroll-rect"></div>
+  <div class="center-rect"></div>
 
   <script>
-    const rect = document.querySelector(".scroll-rect");
+    const rect = document.querySelector(".center-rect");
 
     window.addEventListener("scroll", () => {
-      const triggerPoint = 200; // px скролу
+      const maxScroll = document.body.scrollHeight - window.innerHeight;
+      const progress = window.scrollY / maxScroll;
 
-      if (window.scrollY > triggerPoint) {
-        rect.classList.add("visible");
-      } else {
-        rect.classList.remove("visible");
-      }
+      const maxHeight = window.innerHeight; // 100vh
+      rect.style.height = progress * maxHeight + "px";
     });
   </script>
 
