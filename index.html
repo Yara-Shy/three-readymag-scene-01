@@ -2,81 +2,38 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Three.js Text</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Intro Shape</title>
+
   <style>
-    body { margin: 0; overflow: hidden; }
-    #three-container { width: 100vw; height: 100vh; }
+    /* білий фон сторінки */
+    body {
+      margin: 0;
+      background: white;
+      height: 200vh; /* просто щоб був скрол */
+      font-family: sans-serif;
+    }
+
+    /* чорна фігура по центру */
+    .intro-shape {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 200px;
+      height: 200px;
+      background: black;
+      border-radius: 50%;
+
+      /* початковий стан */
+      transform: translate(-50%, -50%) scale(0);
+      z-index: 9999;
+    }
   </style>
 </head>
+
 <body>
 
-<div id="three-container"></div>
+  <div class="intro-shape"></div>
 
-<script type="module">
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js";
-import { FontLoader } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/FontLoader.js";
-import { TextGeometry } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/geometries/TextGeometry.js";
-
-const container = document.getElementById("three-container");
-
-// scene
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x111111);
-
-// camera
-const camera = new THREE.PerspectiveCamera(
-  60,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  100
-);
-camera.position.z = 5;
-
-// renderer
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-container.appendChild(renderer.domElement);
-
-// light
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(2, 2, 5);
-scene.add(light);
-
-// load font and create text
-const loader = new FontLoader();
-loader.load(
-  "https://cdn.jsdelivr.net/npm/three@0.160/examples/fonts/droid/droid_sans_bold.typeface.json",
-  (font) => {
-    const geometry = new TextGeometry("Hello", {
-      font: font,
-      size: 0.8,
-      height: 0.2,
-    });
-
-    geometry.center();
-
-    const material = new THREE.MeshStandardMaterial({ color: 0x00ffcc });
-    const mesh = new THREE.Mesh(geometry, material);
-    scene.add(mesh);
-
-    animate();
-  }
-);
-
-// animation loop
-function animate() {
-  requestAnimationFrame(animate);
-  scene.rotation.y += 0.01;
-  renderer.render(scene, camera);
-}
-
-// resize
-window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
-</script>
-
-</body>
-</html>
+  <script>
+    // запускає
